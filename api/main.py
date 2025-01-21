@@ -11,17 +11,20 @@ import cartopy.feature as cfeature
 from matplotlib.colors import Normalize
 from math import radians, degrees, sin, cos, atan2, sqrt, asin
 from PIL import Image
+from dotenv import load_dotenv
+from environs import Env
 import math
 import os
 
+env = Env()
+env.read_env() 
+ORIGINS = env.list('ORIGINS')
+
 app = FastAPI()
 
-
 # Enable CORS
-origins = [
-    "http://localhost:5173",  # React frontend
-    "http://127.0.0.1:3000"
-]
+origins = ORIGINS
+
 
 app.add_middleware(
     CORSMiddleware,
