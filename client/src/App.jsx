@@ -1,26 +1,27 @@
 // React Frontend
 import { useState } from 'react';
-import { TileLayer, MapContainer, ImageOverlay, Marker, useMap } from 'react-leaflet';
+import { TileLayer, MapContainer, ImageOverlay, Marker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import './App.css'
+import { ORIGIN } from './globals';
 
 const App = () => {
-  const [netcdfFile, setNetcdfFile] = useState(null);
+ 
   const [variables, setVariables] = useState([]);
-  const [selectedVariable, setSelectedVariable] = useState(null);
+  
   const [fileName, setFileName] = useState('');
   const [center, setCenter] = useState({ lat: 0, lon: 0 });
   const [mapImage, setMapImage] = useState(null);
 
   const handleFileUpload = async (event) => {
       const file = event.target.files[0];
-      setNetcdfFile(file);
+      
       setFileName(file.name)
 
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('http://localhost:8000/upload', {
+      const response = await fetch(`${ORIGIN}/upload`, {
           method: 'POST',
           body: formData,
       });
@@ -31,7 +32,7 @@ const App = () => {
 
   const handleVariableChange = async (event) => {
       const variable = event.target.value;
-      setSelectedVariable(variable);
+     
 
       const queryParams = new URLSearchParams({
           variable: variable,
