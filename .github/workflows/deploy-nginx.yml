@@ -25,7 +25,7 @@ jobs:
         run: ssh-keyscan -H -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
       - name: Deploy with rsync
-        run: rsync -avz -e "ssh -p ${{ secrets.SSH_PORT }}" ./nginx/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/${{ secrets.SSH_USER }}/ecosystem/configs/nginx
+        run: rsync -avz -e "ssh -p ${{ secrets.SSH_PORT }}" ./configs/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/${{ secrets.SSH_USER }}/weather-radar/configs
 
   nginx-restart:
     runs-on: ubuntu-latest
@@ -39,7 +39,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            cd /home/${{ secrets.SSH_USER }}/ecosystem/configs/nginx
+            cd /home/${{ secrets.SSH_USER }}/weather-radar/configs
             sudo -S <<< ${{secrets.SSH_PASSWORD}} cp -a default /etc/nginx/sites-available
             sudo -S <<< ${{secrets.SSH_PASSWORD}} chcon -Rt httpd_sys_content_t /etc/nginx/sites-available
             sudo -S <<< ${{secrets.SSH_PASSWORD}} systemctl restart nginx
