@@ -1,0 +1,45 @@
+name: deploy-nginx-config
+
+on:
+  push:
+    paths:
+      - "configs/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: "just-a-placeholder-so-we-dont-get-errors"
+
+      - name: Adding Known Hosts
+        run: ssh-keyscan -H -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy with rsync
+        run: rsync -avz -e "ssh -p ${{ secrets.SSH_PORT }}" ./nginx/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/${{ secrets.SSH_USER }}/ecosystem/configs/nginx
+
+  nginx-restart:
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - name: executing remote ssh commands using password
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd /home/${{ secrets.SSH_USER }}/ecosystem/configs/nginx
+            sudo -S <<< ${{secrets.SSH_PASSWORD}} cp -a default /etc/nginx/sites-available
+            sudo -S <<< ${{secrets.SSH_PASSWORD}} chcon -Rt httpd_sys_content_t /etc/nginx/sites-available
+            sudo -S <<< ${{secrets.SSH_PASSWORD}} systemctl restart nginx
