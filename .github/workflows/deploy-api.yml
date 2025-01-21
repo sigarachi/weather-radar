@@ -41,4 +41,4 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             cd /home/${{secrets.SSH_USER_FOLDER}}/weather-radar/api
-            pip install
+            pip install -r packages.txt

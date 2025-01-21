@@ -11,7 +11,6 @@ import cartopy.feature as cfeature
 from matplotlib.colors import Normalize
 from math import radians, degrees, sin, cos, atan2, sqrt, asin
 from PIL import Image
-from dotenv import load_dotenv
 from environs import Env
 import math
 import os
