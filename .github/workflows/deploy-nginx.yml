@@ -40,6 +40,6 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             cd /home/${{ secrets.SSH_USER }}/weather-radar/configs
-            sudo -S <<< ${{secrets.SSH_PASSWORD}} cp -a default /etc/nginx/sites-available
+            sudo -S <<< ${{secrets.SSH_PASSWORD}} cp -a weather-radar.conf /etc/nginx/sites-available
             sudo -S <<< ${{secrets.SSH_PASSWORD}} chcon -Rt httpd_sys_content_t /etc/nginx/sites-available
             sudo -S <<< ${{secrets.SSH_PASSWORD}} systemctl restart nginx
