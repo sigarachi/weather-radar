@@ -41,7 +41,7 @@ const App = () => {
           filename: fileName
       });
 
-      const response = await fetch(`http://localhost:8000/plot?${queryParams}`);
+      const response = await fetch(`${ORIGIN}/plot?${queryParams}`);
       if (response.ok) {
           const blob = await response.blob();
           const url = URL.createObjectURL(blob);
