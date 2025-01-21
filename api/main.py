@@ -72,8 +72,7 @@ def plot_data_on_map(data_array, lat_center, lon_center, pixel_size=1000, slice_
 
     if len(shape) == 3:  # Если данные имеют временное измерение
         if slice_index >= shape[0]:
-            print(f"Индекс временного среза {
-                  slice_index} выходит за пределы первого измерения ({shape[0]}).")
+            print(f"Индекс временного среза {slice_index} выходит за пределы первого измерения ({shape[0]}).")
             return
         data = data[slice_index, :, :]
     else:  # Если данные двумерные
