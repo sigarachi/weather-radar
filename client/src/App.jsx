@@ -1,34 +1,28 @@
 // React Frontend
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { TileLayer, MapContainer, ImageOverlay, Marker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import './App.css'
 import { ORIGIN } from './globals';
+import { usePeriods } from './hooks/use-periods';
+import { LOCATOR_MAP, VARIABLE_MAP } from './constants';
+import { Selector } from './components/selector';
 
 const App = () => {
  
   const [variables, setVariables] = useState([]);
   
-  const [fileName, setFileName] = useState('');
   const [center, setCenter] = useState({ lat: 0, lon: 0 });
   const [mapImage, setMapImage] = useState(null);
+  const [selectedPeriod, setSelectedPeriod] = useState('');
+  const [locatorOptions, setLocatorOptions] = useState([]);
+  const [locator, setLocator] = useState('');
 
-  const handleFileUpload = async (event) => {
-      const file = event.target.files[0];
-      
-      setFileName(file.name)
+  const locatorCords = useMemo(() => {
+    return LOCATOR_MAP.filter((el) => el.code === locator)[0]?.cords ?? {lat: 0, lng: 0}
+  }, [locator]);
 
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch(`${ORIGIN}/upload`, {
-          method: 'POST',
-          body: formData,
-      });
-      const variables = await response.json();
-
-      setVariables(variables);
-  };
+  const {periods, isLoading, isError, error} = usePeriods();
 
   const handleVariableChange = async (event) => {
       const variable = event.target.value;
@@ -36,9 +30,11 @@ const App = () => {
 
       const queryParams = new URLSearchParams({
           variable: variable,
-          lat: center.lat,
-          lon: center.lon,
-          filename: fileName
+          locator_code: locator,
+          timestamp: selectedPeriod[0],
+          lat: locatorCords.lat,
+          lon: locatorCords.lng,
+          base_path: './periods'
       });
 
       const response = await fetch(`${ORIGIN}/plot?${queryParams}`);
@@ -51,56 +47,86 @@ const App = () => {
       }
   };
 
-  const handleCenterChange = (field, value) => {
-      setCenter(prev => ({ ...prev, [field]: parseFloat(value) }));
+  const handlePeriodChange = async (event) => {
+    const variable = event.target.value.split(',');
+    setSelectedPeriod(variable)
+   
+
+    const queryParams = new URLSearchParams({
+        timestamp: variable[0],
+        base_path: variable[1]
+    });
+
+    const response = await fetch(`${ORIGIN}/list_files?${queryParams}`);
+    if (response.ok) {
+        const data = await response.json();
+        setLocatorOptions(LOCATOR_MAP.filter((el) => {
+            console.log(el)
+            if(data.files.find((file) => file.includes(el.code))) return true
+
+            return false
+        }))
+
+    } else {
+        console.error('Failed to fetch periods');
+    }
+  };
+
+  const handleLocatorChange = async (event) => {
+    const variable = event.target.value;
+    setLocator(variable)
+   
+
+    const queryParams = new URLSearchParams({
+        timestamp: selectedPeriod[0],
+        locator_code: variable,
+        base_path: selectedPeriod[1]
+    });
+
+    const response = await fetch(`${ORIGIN}/variables?${queryParams}`);
+    if (response.ok) {
+        const data = await response.json();
+        setVariables(data)
+
+    } else {
+        console.error('Failed to fetch periods');
+    }
   };
 
   return (
       <div className='page-wrapper'>
           <h1>NetCDF Viewer</h1>
           <div className='flex row'>
-            <input type="file" accept=".nc" onChange={handleFileUpload} />
+            {Boolean(!isLoading && periods.length) && 
+                <Selector options={periods.map((item) => ({value: item, name: new Date(item[0]).toLocaleDateString('ru-RU', {minute: '2-digit', hour: '2-digit', second: '2-digit'})}))} onChange={handlePeriodChange} value={selectedPeriod} />
+            }
+            {locatorOptions.length > 0 && (
+                <select onChange={handleLocatorChange}>
+                    <option value="">Выберите локатор</option>
+                    {locatorOptions.map((variable) => (
+                        <option key={variable.code} value={variable.code}>{variable.name}</option>
+                    ))}
+                </select>
+            )}
             {variables.length > 0 && (
                 <select onChange={handleVariableChange}>
                     <option value="">Выберите переменную</option>
                     {variables.map((variable) => (
-                        <option key={variable} value={variable}>{variable}</option>
+                        <option key={variable} value={variable}>{VARIABLE_MAP[variable]}</option>
                     ))}
                 </select>
             )}
           </div>
-          <div className='flex row' style={{
-            gap: '12px'
-          }}>
-              <label>
-                  Широта:
-                  <input
-                      type="number"
-                      value={center.lat}
-                      name="lat"
-                      onChange={(e) => handleCenterChange('lat', e.target.value)}
-                  />
-              </label>
-              <label>
-                  Долгота:
-                  <input
-                      type="number"
-                      value={center.lon}
-                      name="lon"
-                      onChange={(e) => handleCenterChange('lon', e.target.value)}
-                  />
-              </label>
-          </div>
-          <MapContainer center={[center.lat, center.lon]} zoom={6} style={{ height: '100%', width: '100%' }}>
+          <MapContainer center={[center.lat,center.lon]} zoom={6} style={{ height: '100%', width: '100%' }}>
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
               {mapImage && (
                   <ImageOverlay
                       url={mapImage}
-                      bounds={[[center.lat - 5, center.lon - 5], [center.lat + 5, center.lon + 5]]}
+                      bounds={[[locatorCords.lat - 5, locatorCords.lng - 5], [locatorCords.lat + 5, locatorCords.lng + 5]]}
                       opacity={10}
                   />
               )}
-              <Marker position={[center.lat, center.lon]} />
+              <Marker position={locatorCords} />
           </MapContainer>
       </div>
   );
