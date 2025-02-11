@@ -7,12 +7,14 @@ import { ORIGIN } from './globals';
 import { usePeriods } from './hooks/use-periods';
 import { LOCATOR_MAP, VARIABLE_MAP } from './constants';
 import { Selector } from './components/selector';
+import L from 'leaflet';
+
 
 const App = () => {
  
   const [variables, setVariables] = useState([]);
   
-  const [center, setCenter] = useState({ lat: 0, lon: 0 });
+  const [center, setCenter] = useState({ lat: 55.7522, lon: 37.6156 });
   const [mapImage, setMapImage] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [locatorOptions, setLocatorOptions] = useState([]);
@@ -124,6 +126,7 @@ const App = () => {
                       url={mapImage}
                       bounds={[[locatorCords.lat - 5, locatorCords.lng - 5], [locatorCords.lat + 5, locatorCords.lng + 5]]}
                       opacity={10}
+                      
                   />
               )}
               <Marker position={locatorCords} />

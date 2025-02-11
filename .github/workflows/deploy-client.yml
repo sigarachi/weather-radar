@@ -44,3 +44,6 @@ jobs:
             npm install
             npm run build
             sudo -S <<< ${{secrets.SSH_PASSWORD}} cp -a ./dist/* /var/www/html/weather-radar.sigarachi.dev
+            su <<< ${{secrets.SSH_PASSWORD}}
+            chcon -vR system_u:object_r:httpd_sys_content_t:s0 /var/www/html/weather-radar.sigarachi.dev 
+            chmod 755 /var/www/html/weather-radar.sigarachi.dev

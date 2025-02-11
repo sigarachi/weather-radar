@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "prettier": "^3.4.2",
+    "proj4leaflet": "^1.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-leaflet": "^4.2.1"

@@ -59,7 +59,65 @@ custom_colors_ZH = [
    '#720000'
 ]
 
-custom_cmap = LinearSegmentedColormap.from_list("custom_gradient", custom_colors_ZH)
+custom_colors_VR = [
+    '#013a10',
+    '#005822',
+    '#1b7b3b',
+    '#399a53',
+    '#61b266',
+    '#7fc589',
+    '#9ccaa3',
+    '#bcd8c2',
+    '#daf0db',
+    '#ffffff',
+    '#fedcd0',
+    '#fdc4b0',
+    '#f7a688',
+    '#fa8267',
+    '#ee603c',
+    '#d92d1f',
+    '#b90b0c',
+    '#8b0b0c',
+    '#5f0004'
+]
+
+custom_colors_ZDR = ['#212892', '#105380', '#1CBEFE', '#2FE1FF', '#72FEFB', '#74FF88', '#7CB846', '#008601', '#FFE202', '#E0BF4C', '#D49802', '#FEA8A7', '#E6594F', '#F81600', '#B90B0A', '#BE96AE', '#7F586A']
+custom_colors_FDP = ['#F665E6', '#FC90C2', '#FBB59C', '#FCD472', '#F2ED3B', '#D0E818', '#A6D912', '#7ACB0D', '#48B90F', '#35A43B', '#448A72', '#3B6FA1', '#2A4EC8', '#2827E4', '#591EF2', '#8535FA', '#AE40FB', '#DB48F9']
+custom_colors_roHV = ['#441C02', '#833B00', '#C15700', '#FF8001', '#FFC0C0', '#70FFFF', '#01D8DB', '#00CB00', '#01E900', '#AAFE50', '#CBFE97', '#FFFE80']
+custom_colors_SV = ['#E3F7F8', '#CBF8F3', '#9AECEA', '#81DE6C', '#F8F649', '#FDCE20', '#F9942A', '#F84E2D', '#E7294D', '#AE1D94']
+custom_colors_TB = ['#E6E6E6', '#FDCD00', '#FF3300', '#CC0003']
+custom_colors_DPmap = ['#9FA9B2', '#A3C6FF', '#45FF92', '#01C15A', '#009800', '#FFFF81', '#4088FE', '#0038FF', '#000074', '#FFAB7F', '#FF557F', '#FF0101', '#CA6702', '#894401', '#610000', '#FFAAFF', '#FF54FF', '#C600C7', '#43405D']
+custom_colors_Hngo = ['#EAF4FE', '#CFE7FF', '#B9DBFE', '#9CCFFE', '#56ABFE', '#027FFF', '#006ADA', '#005FBD', '#0052A2', '#024289', '#027500', '#00AB01', '#25FF25', '#FFFF01', '#FF9899', '#FE0000', '#A60000', '#710100']
+custom_colors_VIL = ['#DCEFFD', '#B1DAFA', '#88C4FF', '#4AA5FE', '#95FDFE', '#4BFFFF', '#01D8DA', '#00CB00', '#02EA00', '#A7FF50', '#CBFF98', '#FFFF81', '#FF9B8C', '#FF3F40', '#FA6AE3', '#C400C4', '#A60000', '#720000']
+custom_colors_R = ['#9B9B9B', '#868887', '#0055FE', '#010080', '#FFFF00', '#C9EF04', '#FDAB00', '#FF5600', '#FE0000', '#81FF7F', '#02A901', '#FE83F5', '#D000D0']
+custom_colors_Qp = ['#FFAAFF', '#D0E9FF', '#00AAFF', '#004CFE', '#0000C5', '#00007E', '#FEFF01', '#FF7F02', '#E5490C', '#FD0100', '#01BE00', '#007500', '#FF00FF', '#CC009D']
+custom_colors_Hvgo = ['#07FEA5', '#1BF36C', '#1FBD82', '#229470', '#257164', '#164137', '#01CCEA', '#0287E4', '#0136D0', '#05176D', '#D3B51F', '#DA491A', '#D91A12', '#84050C', '#43A804', '#033F03', '#A31047', '#DB2F9D']
+
+custom_colors_map = {
+    'Zh': custom_colors_ZH,
+    'Zv': custom_colors_ZH,
+    'Vr': custom_colors_VR,
+    'Zdr': custom_colors_ZDR,
+    'Fdp': custom_colors_FDP,
+    'roHV': custom_colors_roHV,
+    'Sg': custom_colors_SV,
+    'Sv': custom_colors_SV,
+    'Tb': custom_colors_TB,
+    'DPmap': custom_colors_DPmap,
+    'Hngo': custom_colors_Hngo,
+    'Hvgo': custom_colors_Hvgo,
+    'VIL': custom_colors_VIL,
+    'R': custom_colors_R,
+    'Qp3': custom_colors_Qp,
+    'Qp6': custom_colors_Qp,
+    'Qp12': custom_colors_Qp,
+    'Qp24': custom_colors_Qp,
+}
+
+#custom_cmap = LinearSegmentedColormap.from_list("custom_gradient", custom_colors_ZH)
+
+def get_custom_cmap(variable:str =""):
+    return LinearSegmentedColormap.from_list("custom_gradient", custom_colors_map[variable])
 
 
 def parse_folder_structure(base_path):
@@ -121,36 +179,27 @@ def find_all_zip_files(folder_path):
 
 def calculate_destination(lat1, lon1, distance, bearing):
     """
-    Рассчитывает координаты точки назначения по расстоянию и направлению (bearing).
-    :param lat1: широта начальной точки (в градусах)
-    :param lon1: долгота начальной точки (в градусах)
-    :param distance: расстояние до точки назначения (в метрах)
-    :param bearing: угол направления (bearing) в градусах
-    :return: широта и долгота точки назначения (в градусах)
+    Рассчитывает координаты точки назначения по расстоянию и направлению (bearing), 
+    корректируя долготу с учетом широты.
     """
     R = 6371e3  # Радиус Земли в метрах
 
-    # Преобразуем координаты начальной точки и угол в радианы
     lat1 = math.radians(lat1)
     lon1 = math.radians(lon1)
     bearing = math.radians(bearing)
 
-    # Вычисляем новую широту (lat2)
     lat2 = math.asin(math.sin(lat1) * math.cos(distance / R) +
                      math.cos(lat1) * math.sin(distance / R) * math.cos(bearing))
 
-    # Вычисляем новую долготу (lon2)
-    lon2 = lon1 + math.atan2(math.sin(bearing) * math.sin(distance / R) * math.cos(lat1),
-                             math.cos(distance / R) - math.sin(lat1) * math.sin(lat2))
+    delta_lon = math.atan2(math.sin(bearing) * math.sin(distance / R) * math.cos(lat1),
+                           math.cos(distance / R) - math.sin(lat1) * math.sin(lat2))
 
-    # Преобразуем обратно в градусы
-    lat2 = math.degrees(lat2)
-    lon2 = math.degrees(lon2)
+    lon2 = lon1 + delta_lon / math.cos(lat1)  # Коррекция долготы!
 
-    return lat2, lon2
+    return math.degrees(lat2), math.degrees(lon2)
 
 
-def plot_data_on_map(data_array, lat_center, lon_center, pixel_size=1000, slice_index=3):
+def plot_data_on_map(data_array, lat_center, lon_center, variable, pixel_size=1000, slice_index=3):
     shape = data_array.shape
     data = data_array[:]
     # max_distance = resolution_km * shape[0]
@@ -189,12 +238,12 @@ def plot_data_on_map(data_array, lat_center, lon_center, pixel_size=1000, slice_
     norm = Normalize(vmin=np.nanmin(data),
                      vmax=np.nanmax(data))
 
-    masked_data = np.ma.masked_where(
-        (filtered_data == 0) | (filtered_data == -32), filtered_data)
+    # masked_data = np.ma.masked_where(
+    #     (filtered_data == 0) | (filtered_data == -32), filtered_data)
 
     fig = plt.figure(figsize=(10, 8), facecolor='none')
-    plt.pcolormesh(lons, lats, masked_data,
-                   shading='auto', norm=norm, cmap=custom_cmap)
+    plt.pcolormesh(lons, lats, filtered_data,
+                   shading='auto', norm=norm, cmap=get_custom_cmap(variable))
     plt.axis('off')
     plt.xlabel("Longitude")
     plt.ylabel("Latitude")
@@ -252,7 +301,7 @@ async def get_plot(variable: str, locator_code: str = "", lat = 0, lon = 0, time
         # shape = data_array.shape
 
         # Generate the plot
-        output_file = plot_data_on_map(data_array, float(lat), float(lon))
+        output_file = plot_data_on_map(data_array, float(lat), float(lon), variable)
         ds.close()
 
         return FileResponse(output_file, media_type="image/png", filename="map.png")

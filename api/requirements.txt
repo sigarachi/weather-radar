@@ -1,0 +1,10 @@
+fastapi,
+xarray, 
+numpy, 
+geopy, 
+matplotlib, 
+cartopy, 
+netCDF4, 
+pillow, 
+environs, 
+fastapi[standard]
