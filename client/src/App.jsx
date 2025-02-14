@@ -5,7 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import './App.css'
 import { ORIGIN } from './globals';
 import { usePeriods } from './hooks/use-periods';
-import { LOCATOR_MAP, VARIABLE_MAP } from './constants';
+import { IMAGE_MAP, LOCATOR_MAP, VARIABLE_MAP } from './constants';
 import { Selector } from './components/selector';
 import L from 'leaflet';
 
@@ -17,6 +17,7 @@ const App = () => {
   const [center, setCenter] = useState({ lat: 55.7522, lon: 37.6156 });
   const [mapImage, setMapImage] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('');
+  const [selectedVariable, setSelectedVariable] = useState('');
   const [locatorOptions, setLocatorOptions] = useState([]);
   const [locator, setLocator] = useState('');
 
@@ -28,6 +29,8 @@ const App = () => {
 
   const handleVariableChange = async (event) => {
       const variable = event.target.value;
+
+      setSelectedVariable(variable);
      
 
       const queryParams = new URLSearchParams({
@@ -131,6 +134,11 @@ const App = () => {
               )}
               <Marker position={locatorCords} />
           </MapContainer>
+          {selectedVariable && 
+            <div style={{position: 'absolute', zIndex: 1000, bottom: 0}}>
+                <img src={`/img/variables/${IMAGE_MAP[selectedVariable]}`} />
+            </div>
+          }
       </div>
   );
 };

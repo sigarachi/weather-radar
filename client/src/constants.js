@@ -20,3 +20,24 @@ export const VARIABLE_MAP = {
 }
 
 export const LOCATOR_MAP = [{name: 'Смоленск', code: 'RUDL', cords: {lat: 54.782630, lng: 32.045098}}, {name: 'Нижний Новгород', code: 'RUDN', cords: {lat: 56.326797, lng: 44.006516}}];
+
+export const IMAGE_MAP = {
+    Zh: 'zh.png',
+    Zv: 'zh.png',
+    Sg: 'sg.png',
+    Sv: 'sg.png',
+    Tb: 'tb.png',
+    Zdr: 'zdr.png',
+    Fdp: 'fdp.png',
+    Vr: 'vr.png',
+    roHV: 'rohv.png',
+    Hngo: 'hngo.png',
+    Hvgo: 'hvgo.png',
+    DPmap: 'dpmap.png',
+    VIL: 'vil.png',
+    R: 'r.png',
+    Qp3: 'qp.png',
+    Qp6: 'qp.png',
+    Qp12: 'qp.png',
+    Qp24: 'qp.png'
+}
