@@ -8,6 +8,7 @@ import { IMAGE_MAP, LOCATOR_MAP, VARIABLE_MAP } from './constants';
 import { Selector } from './components/selector';
 import { MapContainer, TileLayer, Polygon } from 'react-leaflet';
 import "leaflet/dist/leaflet.css";
+import { useVariable } from './hooks/use-variable';
 
 
 const App = () => {
@@ -18,38 +19,23 @@ const App = () => {
   const [selectedVariable, setSelectedVariable] = useState('');
   const [locatorOptions, setLocatorOptions] = useState([]);
   const [locator, setLocator] = useState('');
+  const [sliceIndex, setSliceIndex] = useState(1);
 
-  const [shapes, setShapes] = useState([]);
+  //const [shapes, setShapes] = useState([]);
 
   const locatorCords = useMemo(() => {
     return LOCATOR_MAP.filter((el) => el.code === locator)[0]?.cords ?? {lat: 0, lng: 0}
   }, [locator]);
 
+  const showSlice = useMemo(() => Boolean(selectedVariable === 'Zh' || selectedVariable === 'Zv'), [selectedVariable])
+
   const {periods, isLoading} = usePeriods();
+  const { data } = useVariable(selectedVariable, locator, locatorCords, selectedPeriod[0], sliceIndex);
 
   const handleVariableChange = async (event) => {
       const variable = event.target.value;
 
       setSelectedVariable(variable);
-     
-
-      const queryParams = new URLSearchParams({
-          variable: variable,
-          locator_code: locator,
-          timestamp: selectedPeriod[0],
-          lat: locatorCords.lat,
-          lon: locatorCords.lng,
-          base_path: './periods'
-      });
-
-      const response = await fetch(`${ORIGIN}/plot?${queryParams}`);
-      if (response.ok) {
-          const json = await response.json();
-          const data = JSON.parse(json);
-          setShapes(data.shapes)
-      } else {
-          console.error('Failed to fetch map image');
-      }
   };
 
   const handlePeriodChange = async (event) => {
@@ -122,13 +108,21 @@ const App = () => {
                     ))}
                 </select>
             )}
+            {showSlice && 
+                <select onChange={(event) => setSliceIndex(event.target.value)}>
+                    <option value="">Выберите уровень</option>
+                    {Array.from(Array(15).keys()).map((val) => (
+                         <option key={val} value={val}>{val}</option>
+                    ))}
+                </select>
+            }
           </div>
            <MapContainer center={[55.75, 37.62]} zoom={10} style={{ height: '100vh', width: '100%' }}>
                   <TileLayer 
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     attribution='&copy; OpenStreetMap contributors'
                   />
-                {shapes.map((shape, idx) => {
+                {data && data.map((shape, idx) => {
                     // shape.coordinates может быть списком многоугольников
                     return shape.polygon.coordinates.map((coords, subIdx) => (
                         <Polygon

@@ -574,7 +574,7 @@ async def get_tile(z: int, x: int, y: int):
     return FileResponse(tile_path, media_type="image/png")
 
 @app.get("/plot")
-async def get_plot(variable: str, locator_code: str = "", lat=0, lon=0, timestamp: str = Query(..., description="Timestamp in ISO format"), base_path: str = "path/to/your/folder"):
+async def get_plot(variable: str, locator_code: str = "", lat=0, lon=0, timestamp: str = Query(..., description="Timestamp in ISO format"), base_path: str = "path/to/your/folder", slice_index:int =1):
     try:
         time_data = parse_folder_structure('./periods')
         # print(time_data)
@@ -595,7 +595,7 @@ async def get_plot(variable: str, locator_code: str = "", lat=0, lon=0, timestam
 
         # Generate the plot
         output_file = plot_data_on_map_custom_json_by_color(
-            data_array, float(lat), float(lon), variable)
+            data_array, float(lat), float(lon), variable, slice_index=slice_index)
         ds.close()
         #print(output_file)
         #generate_tiles_from_image(output_file, TILES_DIR, center_lat=lat, center_lon=lon)
