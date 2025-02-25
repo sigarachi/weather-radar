@@ -6,5 +6,6 @@ matplotlib,
 cartopy, 
 netCDF4, 
 pillow, 
-environs, 
+environs,
+shapely,
 fastapi[standard]

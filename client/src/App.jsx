@@ -1,31 +1,31 @@
 // React Frontend
 import { useMemo, useState } from 'react';
-import { TileLayer, MapContainer, ImageOverlay, Marker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import './App.css'
 import { ORIGIN } from './globals';
 import { usePeriods } from './hooks/use-periods';
 import { IMAGE_MAP, LOCATOR_MAP, VARIABLE_MAP } from './constants';
 import { Selector } from './components/selector';
-import L from 'leaflet';
+import { MapContainer, TileLayer, Polygon } from 'react-leaflet';
+import "leaflet/dist/leaflet.css";
 
 
 const App = () => {
  
   const [variables, setVariables] = useState([]);
   
-  const [center, setCenter] = useState({ lat: 55.7522, lon: 37.6156 });
-  const [mapImage, setMapImage] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [selectedVariable, setSelectedVariable] = useState('');
   const [locatorOptions, setLocatorOptions] = useState([]);
   const [locator, setLocator] = useState('');
 
+  const [shapes, setShapes] = useState([]);
+
   const locatorCords = useMemo(() => {
     return LOCATOR_MAP.filter((el) => el.code === locator)[0]?.cords ?? {lat: 0, lng: 0}
   }, [locator]);
 
-  const {periods, isLoading, isError, error} = usePeriods();
+  const {periods, isLoading} = usePeriods();
 
   const handleVariableChange = async (event) => {
       const variable = event.target.value;
@@ -44,9 +44,9 @@ const App = () => {
 
       const response = await fetch(`${ORIGIN}/plot?${queryParams}`);
       if (response.ok) {
-          const blob = await response.blob();
-          const url = URL.createObjectURL(blob);
-          setMapImage(url);
+          const json = await response.json();
+          const data = JSON.parse(json);
+          setShapes(data.shapes)
       } else {
           console.error('Failed to fetch map image');
       }
@@ -76,6 +76,7 @@ const App = () => {
         console.error('Failed to fetch periods');
     }
   };
+
 
   const handleLocatorChange = async (event) => {
     const variable = event.target.value;
@@ -122,18 +123,27 @@ const App = () => {
                 </select>
             )}
           </div>
-          <MapContainer center={[center.lat,center.lon]} zoom={6} style={{ height: '100%', width: '100%' }}>
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              {mapImage && (
-                  <ImageOverlay
-                      url={mapImage}
-                      bounds={[[locatorCords.lat - 5, locatorCords.lng - 5], [locatorCords.lat + 5, locatorCords.lng + 5]]}
-                      opacity={10}
-                      
+           <MapContainer center={[55.75, 37.62]} zoom={10} style={{ height: '100vh', width: '100%' }}>
+                  <TileLayer 
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='&copy; OpenStreetMap contributors'
                   />
-              )}
-              <Marker position={locatorCords} />
-          </MapContainer>
+                {shapes.map((shape, idx) => {
+                    // shape.coordinates может быть списком многоугольников
+                    return shape.polygon.coordinates.map((coords, subIdx) => (
+                        <Polygon
+                            key={`${idx}-${subIdx}`}
+                            positions={coords.map(coord => [coord[0], coord[1]])} // формат [lat, lon]
+                            pathOptions={{
+                                color: shape.color,
+                                fillColor: shape.color,
+                                fillOpacity: 0.1,
+                                weight: 2
+                            }}
+                        />
+                    ));
+                })}
+            </MapContainer>
           {selectedVariable && 
             <div style={{position: 'absolute', zIndex: 1000, bottom: 0}}>
                 <img src={`/img/variables/${IMAGE_MAP[selectedVariable]}`} />
