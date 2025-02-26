@@ -109,10 +109,9 @@ const App = () => {
                 </select>
             )}
             {showSlice && 
-                <select onChange={(event) => setSliceIndex(event.target.value)}>
-                    <option value="">Выберите уровень</option>
+                <select value={setSliceIndex} onChange={(event) => setSliceIndex(event.target.value)}>
                     {Array.from(Array(15).keys()).map((val) => (
-                         <option key={val} value={val}>{val}</option>
+                         <option key={val} value={val+1}>{val+1}</option>
                     ))}
                 </select>
             }
