@@ -30,7 +30,7 @@ const App = () => {
   const showSlice = useMemo(() => Boolean(selectedVariable === 'Zh' || selectedVariable === 'Zv'), [selectedVariable])
 
   const {periods, isLoading} = usePeriods();
-  const { data } = useVariable(selectedVariable, locator, locatorCords, selectedPeriod[0], sliceIndex);
+  //const { data } = useVariable(selectedVariable, locator, locatorCords, selectedPeriod[0], sliceIndex);
 
   const handleVariableChange = async (event) => {
       const variable = event.target.value;
@@ -121,7 +121,16 @@ const App = () => {
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     attribution='&copy; OpenStreetMap contributors'
                   />
-                {data && data.map((shape, idx) => {
+                  {
+                    selectedVariable && <TileLayer opacity={0.6} url={`${ORIGIN}/tiles/{z}/{x}/{y}?${new URLSearchParams({
+                        variable: selectedVariable,
+                        locator_code: locator,
+                        timestamp: selectedPeriod[0],
+                        lat: locatorCords.lat,
+                        lon: locatorCords.lng,
+                    })}`} />
+                  }
+                {/* {data && data.map((shape, idx) => {
                     // shape.coordinates может быть списком многоугольников
                     return shape.polygon.coordinates.map((coords, subIdx) => (
                         <Polygon
@@ -135,7 +144,7 @@ const App = () => {
                             }}
                         />
                     ));
-                })}
+                })} */}
             </MapContainer>
           {selectedVariable && 
             <div style={{position: 'absolute', zIndex: 1000, bottom: 0}}>

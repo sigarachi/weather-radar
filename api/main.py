@@ -2,7 +2,7 @@ import os
 
 
 from fastapi import FastAPI, Query, UploadFile, Form, HTTPException
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import xarray as xr
@@ -22,9 +22,10 @@ import zipfile
 import uuid
 import folium
 from fastapi.staticfiles import StaticFiles
-from shapely.geometry import Polygon, mapping
+from shapely.geometry import Polygon, mapping, Point
 from shapely.ops import unary_union
-
+import mercantile
+from io import BytesIO
 # os.unsetenv('PROJ_DATA')
 # os.unsetenv('PROJ_LIB')
 
@@ -384,161 +385,19 @@ def find_all_zip_files(folder_path):
             files.append(os.path.join(folder_path, file))
     return files
 
-
-def calculate_destination(lat1, lon1, distance, bearing):
-    """
-    Рассчитывает координаты точки назначения по расстоянию и направлению (bearing), 
-    корректируя долготу с учетом широты.
-    """
-    R = 6371e3  # Радиус Земли в метрах
-
-    lat1 = math.radians(lat1)
-    lon1 = math.radians(lon1)
-    bearing = math.radians(bearing)
-
-    lat2 = math.asin(math.sin(lat1) * math.cos(distance / R) +
-                     math.cos(lat1) * math.sin(distance / R) * math.cos(bearing))
-
-    delta_lon = math.atan2(math.sin(bearing) * math.sin(distance / R) * math.cos(lat1),
-                           math.cos(distance / R) - math.sin(lat1) * math.sin(lat2))
-
-    lon2 = lon1 + delta_lon / math.cos(lat1)  # Коррекция долготы!
-
-    return math.degrees(lat2), math.degrees(lon2)
-
-def plot_data_on_map_custom_json_by_color(data_array, lat_center, lon_center, variable, 
-                                          pixel_size=500, slice_index=3, shrink_factor=0.8, 
-                                          max_radius_km=505, simplify_tolerance=0.001):
-    """
-    Генерирует JSON со списком агрегированных фигур (shapes), где для каждого вычисленного цвета
-    (на основе значения ячейки через colormap) объединяются все ячейки в один агрегированный полигон.
-    
-    Условия:
-      - Пропускаются ячейки, значение которых равно 0 или -32.
-      - Для каждой ячейки вычисляются координаты узлов сетки относительно центра (lat_center, lon_center) с учетом pixel_size.
-      - Полигоны ячеек уменьшаются с помощью shrink_factor (то есть вершины сдвигаются к центру ячейки).
-      - Ячейки, центр которых дальше max_radius_km от (lat_center, lon_center), пропускаются.
-    
-    Возвращает JSON-строку следующей структуры:
-    {
-      "shapes": [
-          {
-            "color": "#RRGGBB",
-            "coordinates": [ <список координат для полигона или мультиполигона> ]
-          },
-          ...
-      ]
-    }
-    """
-    # Если data_array трехмерный, берем срез по slice_index
-     # Выбираем срез данных, если массив 3D
-    if data_array.ndim == 3:
-        if slice_index >= data_array.shape[0]:
-            print(f"Индекс временного среза {slice_index} выходит за пределы ({data_array.shape[0]}).")
-            return None
-        data = data_array[slice_index, :, :]
-    else:
-        data = data_array[:, :]
-    data = np.squeeze(data)
-    lat_size, lon_size = data.shape
-
-    # Вычисляем координаты для каждого узла сетки
-    lats = np.zeros((lat_size, lon_size))
-    lons = np.zeros((lat_size, lon_size))
-    for i in range(lat_size):
-        for j in range(lon_size):
-            dx = (j - lon_size // 2) * pixel_size
-            dy = (i - lat_size // 2) * pixel_size
-            distance = math.sqrt(dx**2 + dy**2)
-            bearing = (math.degrees(math.atan2(dx, dy)) + 360) % 360
-            lat, lon = calculate_destination(lat_center, lon_center, distance, bearing)
-            lats[i, j] = lat
-            lons[i, j] = lon
-
-    # Настраиваем нормализацию и colormap для вычисления цвета
-    norm = Normalize(vmin=np.nanmin(data), vmax=np.nanmax(data))
-    cmap = get_custom_cmap(variable)
-
-    # Группируем ячейки по цвету: ключ – цвет в hex, значение – список полигонов (shapely)
-    groups = {}
-
-    # Обрабатываем каждую ячейку (ячейка задаётся четырьмя узлами)
-    for i in range(lat_size - 1):
-        for j in range(lon_size - 1):
-            cell_value = data[i, j]
-            # Пропускаем ячейки с нежелательными значениями
-            if cell_value == 0 or cell_value == -32:
-                continue
-
-            # Формируем замкнутый полигон для ячейки в формате [lat, lon]
-            pts = [
-                [lats[i, j], lons[i, j]],
-                [lats[i, j+1], lons[i, j+1]],
-                [lats[i+1, j+1], lons[i+1, j+1]],
-                [lats[i+1, j], lons[i+1, j]]
-            ]
-            pts.append(pts[0])  # замыкаем полигон
-
-            # Вычисляем центр ячейки
-            center_lat_cell = np.mean([pt[0] for pt in pts[:-1]])
-            center_lon_cell = np.mean([pt[1] for pt in pts[:-1]])
-            # Пропускаем ячейку, если её центр дальше max_radius_km от (lat_center, lon_center)
-            if geodesic((lat_center, lon_center), (center_lat_cell, center_lon_cell)).km > max_radius_km:
-                continue
-
-            # Применяем shrink_factor: сдвигаем каждую вершину к центру
-            new_pts = []
-            for lat_pt, lon_pt in pts:
-                new_lat = center_lat_cell + shrink_factor * (lat_pt - center_lat_cell)
-                new_lon = center_lon_cell + shrink_factor * (lon_pt - center_lon_cell)
-                new_pts.append((new_lat, new_lon))
-            cell_polygon = Polygon(new_pts)
-
-            # Вычисляем цвет ячейки через colormap (используем значение из этой ячейки)
-            rgba = cmap(norm(cell_value))
-            color = plt.cm.colors.rgb2hex(rgba)
-            
-            if color not in groups:
-                groups[color] = []
-            groups[color].append(cell_polygon)
-    
-    # Для каждой группы по цвету объединяем полигоны в один агрегированный многоугольник
-    aggregated_shapes = []
-    for color, poly_list in groups.items():
-        union_poly = unary_union(poly_list)
-        union_poly = union_poly.simplify(simplify_tolerance, preserve_topology=True)
-        # Формируем GeoJSON-геометрию: если Polygon или MultiPolygon
-        if union_poly.geom_type == 'Polygon':
-            polygon_geojson = {
-                "type": "Polygon",
-                "coordinates": [[ [lat, lon] for lat, lon in union_poly.exterior.coords ]]
-            }
-        elif union_poly.geom_type == 'MultiPolygon':
-            coords = []
-            for poly in union_poly.geoms:
-                coords.append([ [lat, lon] for lat, lon in poly.exterior.coords ])
-            polygon_geojson = {
-                "type": "MultiPolygon",
-                "coordinates": coords
-            }
-        else:
-            continue
-        
-        aggregated_shapes.append({
-            "color": color,
-            "polygon": polygon_geojson
-        })
-    
-    output = {"shapes": aggregated_shapes}
-    return json.dumps(output)
-
-
+# Функция для вычисления расстояния между двумя точками (формула Хаверсина)
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371  # Радиус Земли в км
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat / 2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    return R * c  # Возвращает расстояние в км
 
 def get_file_path(time_data, timestamp, all=False):
     for time_iso, folder_path in time_data:
 
         if time_iso == timestamp:
-            print(1)
             if not all:
                 zip_path = find_zip_file(folder_path)
                 if not zip_path:
@@ -561,17 +420,244 @@ def get_loc_file(location_list, locator_code):
             return loc
 
 
-@app.get("/tiles/{z}/{x}/{y}.png")
-async def get_tile(z: int, x: int, y: int):
-    """
-    Serve a tile image based on the z, x, y parameters.
-    """
-    tile_path = os.path.join(TILES_DIR, str(z), str(x), f"{y}.png")
+# Константы
+TILE_SIZE = 256  # Размер тайла в пикселях
+EARTH_RADIUS = 6371  # Радиус Земли в метрах
+RADIUS_LIMIT = 250000  # Ограничение радиуса 250 км
+TILES_XY = 6  # Количество тайлов по X и Y
 
-    if not os.path.exists(tile_path):
-        raise HTTPException(status_code=404, detail="Tile not found")
+CACHE_DIR = "./cache"  # Директория для кэширования карт
 
-    return FileResponse(tile_path, media_type="image/png")
+# Создаем директорию для кэша, если её нет
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+def get_cached_map(variable, center_lat, center_lon):
+    """Проверяет, существует ли уже сгенерированная карта."""
+    filename = f"{CACHE_DIR}/map_{variable}_{center_lat}_{center_lon}.png"
+    return filename if os.path.exists(filename) else None
+
+def tile_center(x, y, z):
+    """Возвращает точные координаты центра тайла (lat, lon)"""
+    n = 2.0 ** z
+    lon = x / n * 360.0 - 180.0
+    lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * y / n)))
+    lat = math.degrees(lat_rad)
+    return lat, lon
+
+# Функция для вычисления расстояния между двумя точками (Хаверсин)
+def haversine_distance(lat1, lon1, lat2, lon2):
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return EARTH_RADIUS * c  # Расстояние в км
+
+# Проверяем, входит ли тайл в радиус 250 км от центра
+def is_tile_within_radius(tile_x, tile_y, zoom, center_lat, center_lon, radius_km=250):
+    """
+    Проверяет, попадает ли тайл в радиус 250 км от центра.
+    - Если хотя бы ОДИН угол тайла попадает в радиус, тайл включается.
+    - Если тайл ПЕРЕСЕКАЕТ границу радиуса, он тоже включается.
+    """
+
+    # Получаем границы тайла (север, юг, запад, восток)
+    bounds = mercantile.bounds(tile_x, tile_y, zoom)
+    tile_corners = [
+        (bounds.north, bounds.west),  # Верхний левый угол
+        (bounds.north, bounds.east),  # Верхний правый угол
+        (bounds.south, bounds.west),  # Нижний левый угол
+        (bounds.south, bounds.east),  # Нижний правый угол
+    ]
+
+    # 📌 Окружность 250 км вокруг центра
+    earth_radius_km = 6371
+    circle = Point(center_lon, center_lat).buffer(radius_km / earth_radius_km)
+
+    # 📌 Создаем полигон тайла
+    tile_polygon = Polygon([
+        (bounds.west, bounds.north), 
+        (bounds.east, bounds.north), 
+        (bounds.east, bounds.south), 
+        (bounds.west, bounds.south)
+    ])
+
+    # ✅ Проверяем, входит ли ХОТЯ БЫ ОДНА ТОЧКА В КРУГ
+    for lat, lon in tile_corners:
+        if haversine_distance(center_lat, center_lon, lat, lon) <= radius_km:
+            print(f"✅ Тайл ({tile_x}, {tile_y}) включен! Угол ({lat}, {lon}) в радиусе 250 км.")
+            return True
+
+    # ✅ Проверяем, ПЕРЕСЕКАЕТ ЛИ ТАЙЛ границу радиуса
+    if tile_polygon.intersects(circle):
+        print(f"✅ Тайл ({tile_x}, {tile_y}) пересекает границу 250 км.")
+        return True
+
+    print(f"❌ Тайл ({tile_x}, {tile_y}) исключен.")
+    return False
+
+def generate_full_map(data_array, lon_min, lon_max, lat_min, lat_max, variable, center_lat, center_lon, slice_index = 1):
+    full_map_file = get_cached_map(variable, center_lat, center_lon)
+
+    if full_map_file:
+        return full_map_file
+
+    if data_array.ndim == 3:
+        if slice_index >= data_array.shape[0]:
+            print(f"Индекс временного среза {slice_index} выходит за пределы ({data_array.shape[0]}).")
+            return None
+        data = data_array[slice_index, :, :]
+    else:
+        data = data_array[:, :]
+    data = np.squeeze(data)
+    norm = Normalize(vmin=np.nanmin(data), vmax=np.nanmax(data))
+    
+    fig, ax = plt.subplots(figsize=(8, 8), dpi=128)
+    extent = [lon_min, lon_max, lat_min, lat_max]
+    custom_cmap = get_custom_cmap(variable)
+    ax.imshow(data, extent=extent, origin='upper', cmap=custom_cmap, norm=norm)
+    ax.axis('off')
+    
+    full_map_file = f"{CACHE_DIR}/map_{variable}_{center_lat}_{center_lon}.png"
+    plt.savefig(full_map_file, bbox_inches='tight', pad_inches=0.0, transparent=True)
+    plt.close()
+    return full_map_file
+
+# Генерация тайла на лету
+# def split_into_tiles(image_path, z, lon_min, lon_max, lat_min, lat_max):
+#     """Разбивает изображение на тайлы и возвращает их в виде словаря {(x, y): Image}"""
+#     image = Image.open(image_path)
+#     width, height = image.size
+
+#     # Количество тайлов на текущем зуме
+#     num_tiles_x = width // TILE_SIZE
+#     num_tiles_y = height // TILE_SIZE
+
+#     tile_dict = {}
+#     for x in range(num_tiles_x):
+#         for y in range(num_tiles_y):
+#             left = x * TILE_SIZE
+#             upper = y * TILE_SIZE
+#             right = left + TILE_SIZE
+#             lower = upper + TILE_SIZE
+
+#             tile = image.crop((left, upper, right, lower))
+#             tile_dict[(x, y)] = tile
+
+#     return tile_dict
+
+def split_into_tiles(image_path, zoom, lon_min, lon_max, lat_min, lat_max, center_lat, center_lon, radius_km=250):
+    """
+    Разбивает изображение на тайлы, но обрабатывает только те, которые пересекаются с радиусом 250 км.
+    """
+    image = Image.open(image_path)
+    width, height = image.size  # Размер полного изображения
+
+    # Определяем тайлы Leaflet для этого масштаба
+    tile_min = mercantile.tile(lon_min, lat_max, zoom)  # Верхний левый
+    tile_max = mercantile.tile(lon_max, lat_min, zoom)  # Нижний правый
+
+    num_tiles_x = tile_max.x - tile_min.x + 1
+    num_tiles_y = tile_max.y - tile_min.y + 1
+
+    tile_width = width / num_tiles_x
+    tile_height = height / num_tiles_y
+
+    tile_dict = {}
+
+    for x in range(num_tiles_x):
+        for y in range(num_tiles_y):
+            left = int(x * tile_width)
+            upper = int(y * tile_height)
+            right = int(left + tile_width)
+            lower = int(upper + tile_height)
+
+            # Привязываем к глобальным `x, y`
+            global_x = tile_min.x + x
+            global_y = tile_min.y + y
+
+            # Проверяем границы тайла
+            bounds = mercantile.bounds(global_x, global_y, zoom)
+            tile_corners = [
+                (bounds.north, bounds.west),  # Верхний левый
+                (bounds.north, bounds.east),  # Верхний правый
+                (bounds.south, bounds.west),  # Нижний левый
+                (bounds.south, bounds.east),  # Нижний правый
+            ]
+
+            # ⚠️ Если хотя бы один угол тайла в радиусе 250 км — включаем этот тайл
+            tile_inside_radius = any(
+                haversine_distance(center_lat, center_lon, lat, lon) <= radius_km
+                for lat, lon in tile_corners
+            )
+
+            if tile_inside_radius:
+                print(f"✅ Тайл ({global_x}, {global_y}) включен! Границы: {bounds}")
+                
+                # Вырезаем нужную часть изображения
+                tile = image.crop((left, upper, right, lower))
+                tile_dict[(global_x, global_y)] = tile
+            else:
+                print(f"❌ Тайл ({global_x}, {global_y}) исключен!")
+
+    print(f"Сгенерировано {len(tile_dict)} тайлов.")
+    return tile_dict
+
+
+
+# API эндпоинт для тайлов
+@app.get("/tiles/{z}/{x}/{y}")
+async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float, locator_code:str, timestamp: str = Query(..., description="Timestamp in ISO format")):
+    """Обрабатывает запрос на тайл, создавая его динамически, если он входит в 250 км от центра."""
+    try:
+        if not is_tile_within_radius(x, y, z, lat, lon, 250):
+            return JSONResponse(content={"error": "Tile is outside the 250km range"}, status_code=501)
+        # Проверяем, входит ли запрошенный тайл в радиус 250 км
+        time_data = parse_folder_structure('./periods')
+        # print(time_data)
+        location_list = get_file_path(time_data, timestamp, True)
+
+        zip_location = get_loc_file(location_list, locator_code)
+        file_location = extract_nc_file(zip_location)
+        
+
+        # Загружаем NetCDF данные
+        ds = xr.open_dataset(file_location)
+        if variable not in ds.variables:
+            return JSONResponse(content={"error": "Variable not found"}, status_code=400)
+
+        data_array = ds[variable]
+
+        # Определяем границы тайла
+        bounds = mercantile.bounds(x, y, z)
+        # lon_min, lon_max = bounds.west, bounds.east
+        # lat_min, lat_max = bounds.south, bounds.north
+
+        lon_min, lon_max = lon - 2.25, lon + 2.25
+        lat_min, lat_max = lat - 2.25, lat + 2.25
+
+        # Генерируем полное изображение карты
+        full_map_path = generate_full_map(data_array, lon_min, lon_max, lat_min, lat_max, variable, lat, lon)
+
+        # Разбиваем изображение на тайлы
+        tile_dict = split_into_tiles(full_map_path, z, lon_min, lon_max, lat_min, lat_max, lat, lon)
+        ds.close()
+
+        # Определяем ключ для поиска нужного тайла
+        tile_key = (x, y)  # Оставляем реальные координаты
+
+        if tile_key in tile_dict:
+            # Возвращаем нужный тайл
+            tile_buffer = BytesIO()
+            tile_dict[tile_key].save(tile_buffer, format="PNG")
+            tile_buffer.seek(0)
+
+            return StreamingResponse(tile_buffer, media_type="image/png",
+                                    headers={"Content-Disposition": f"inline; filename=tile_{z}_{x}_{y}.png"})
+        else:
+            return JSONResponse(content={"error": "Tile not found"}, status_code=404)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/plot")
 async def get_plot(variable: str, locator_code: str = "", lat=0, lon=0, timestamp: str = Query(..., description="Timestamp in ISO format"), base_path: str = "path/to/your/folder", slice_index:int =1):
