@@ -14,7 +14,7 @@ import cartopy.crs as ccrs
 from netCDF4 import Dataset
 import cartopy.feature as cfeature
 from matplotlib.colors import Normalize, LinearSegmentedColormap
-from math import radians, degrees, sin, cos, atan2, sqrt, asin
+from math import radians, degrees, sin, cos, atan2, sqrt, asin, floor, ceil, tan, pi, log
 from PIL import Image
 from environs import Env
 import math
@@ -444,174 +444,167 @@ def tile_center(x, y, z):
     lat = math.degrees(lat_rad)
     return lat, lon
 
-# Функция для вычисления расстояния между двумя точками (Хаверсин)
-def haversine_distance(lat1, lon1, lat2, lon2):
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+TILE_SIZE = 256  # Размер тайла
+GRID_RADIUS_KM = 250  # Радиус сетки данных
+GRID_SIZE = 512  # Размер сетки (512x512 точек)
+
+# 📌 Географический центр (широта, долгота)
+CENTER_LAT = 55.0
+CENTER_LON = 37.0
+
+# 📌 Вычисляем размер ячейки в километрах
+CELL_SIZE_KM = (GRID_RADIUS_KM * 2) / GRID_SIZE
+
+# 📌 Коэффициенты для перевода градусов в километры
+KM_PER_DEGREE_LAT = 110.574  # 1° широты ≈ 110.574 км
+KM_PER_DEGREE_LON = 111.32 * math.cos(math.radians(CENTER_LAT))  # Учитываем широту
+
+
+def haversine(lat1, lon1, lat2, lon2):
+    """
+    📌 Формула Хаверсина – вычисляет расстояние между двумя координатами.
+    """
+    R = 6371  # Радиус Земли в км
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return EARTH_RADIUS * c  # Расстояние в км
+    return R * c  # Расстояние в км
 
-# Проверяем, входит ли тайл в радиус 250 км от центра
-def is_tile_within_radius(tile_x, tile_y, zoom, center_lat, center_lon, radius_km=250):
+def lonlat_to_nxny(lon, lat, center_lat, center_lon, nx_max, ny_max):
     """
-    Проверяет, попадает ли тайл в радиус 250 км от центра.
-    - Если хотя бы ОДИН угол тайла попадает в радиус, тайл включается.
-    - Если тайл ПЕРЕСЕКАЕТ границу радиуса, он тоже включается.
+    📌 Преобразует долготу/широту в индексы `nx, ny` относительно центра.
     """
+    dx_km = (lon - center_lon) * KM_PER_DEGREE_LON
+    dy_km = (lat - center_lat) * KM_PER_DEGREE_LAT
 
-    # Получаем границы тайла (север, юг, запад, восток)
-    bounds = mercantile.bounds(tile_x, tile_y, zoom)
-    tile_corners = [
-        (bounds.north, bounds.west),  # Верхний левый угол
-        (bounds.north, bounds.east),  # Верхний правый угол
-        (bounds.south, bounds.west),  # Нижний левый угол
-        (bounds.south, bounds.east),  # Нижний правый угол
-    ]
+    nx = nx_max // 2 + int(dx_km / (2 * GRID_RADIUS_KM / nx_max))
+    ny = ny_max // 2 - int(dy_km / (2 * GRID_RADIUS_KM / ny_max))  # Инверсия Y (верх -> низ)
 
-    # 📌 Окружность 250 км вокруг центра
-    earth_radius_km = 6371
-    circle = Point(center_lon, center_lat).buffer(radius_km / earth_radius_km)
+    # 📌 Ограничиваем индексы, чтобы не выйти за границы массива
+    nx = max(0, min(nx, nx_max - 1))
+    ny = max(0, min(ny, ny_max - 1))
 
-    # 📌 Создаем полигон тайла
-    tile_polygon = Polygon([
-        (bounds.west, bounds.north), 
-        (bounds.east, bounds.north), 
-        (bounds.east, bounds.south), 
-        (bounds.west, bounds.south)
-    ])
+    return nx, ny
 
-    # ✅ Проверяем, входит ли ХОТЯ БЫ ОДНА ТОЧКА В КРУГ
-    for lat, lon in tile_corners:
-        if haversine_distance(center_lat, center_lon, lat, lon) <= radius_km:
-            print(f"✅ Тайл ({tile_x}, {tile_y}) включен! Угол ({lat}, {lon}) в радиусе 250 км.")
-            return True
 
-    # ✅ Проверяем, ПЕРЕСЕКАЕТ ЛИ ТАЙЛ границу радиуса
-    if tile_polygon.intersects(circle):
-        print(f"✅ Тайл ({tile_x}, {tile_y}) пересекает границу 250 км.")
-        return True
+def from_pixel_to_lonlat(xp, yp, zoom):
+    """
+    📌 Преобразует пиксельные координаты (xp, yp) в широту/долготу.
+    """
+    PixelsAtZoom = 256 * 2**zoom
+    half_size = PixelsAtZoom / 2
 
-    print(f"❌ Тайл ({tile_x}, {tile_y}) исключен.")
-    return False
+    lon = (xp - half_size) * (360 / PixelsAtZoom)
+    lat = (2 * math.atan(math.exp((yp - half_size) / -(PixelsAtZoom / (2 * math.pi)))) - math.pi / 2) * (180 / math.pi)
 
-def generate_full_map(data_array, lon_min, lon_max, lat_min, lat_max, variable, center_lat, center_lon, slice_index = 1):
-    full_map_file = get_cached_map(variable, center_lat, center_lon)
+    return lon, lat
 
-    if full_map_file:
-        return full_map_file
 
-    if data_array.ndim == 3:
-        if slice_index >= data_array.shape[0]:
-            print(f"Индекс временного среза {slice_index} выходит за пределы ({data_array.shape[0]}).")
-            return None
-        data = data_array[slice_index, :, :]
-    else:
-        data = data_array[:, :]
-    data = np.squeeze(data)
+def find_closest_node(nx, ny, data):
+    """
+    📌 Ищет ближайшую доступную точку в сетке (`nx, ny`).
+    """
+    if 0 <= nx < data.shape[1] and 0 <= ny < data.shape[0]:  # !!! ВАЖНО: `shape = (ny, nx)`
+        return data[ny, nx]  # !!! ВАЖНО: `ny` идет первым!
+
+    min_dist = float("inf")
+    closest_val = np.nan
+
+    for i in range(max(0, ny - 2), min(data.shape[0], ny + 2)):  # Проходим по `ny`
+        for j in range(max(0, nx - 2), min(data.shape[1], nx + 2)):  # Проходим по `nx`
+            if not np.isnan(data[i, j]):
+                dist = math.sqrt((nx - j) ** 2 + (ny - i) ** 2)  # !!! ВАЖНО: `(nx, ny) → (j, i)`
+                if dist < min_dist:
+                    min_dist = dist
+                    closest_val = data[i, j]
+
+    return closest_val
+
+def get_tile_data(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_index=0):
+    """
+    📌 Генерирует данные для запрашиваемого тайла.
+    """
+    try:
+        ds = xr.open_dataset(nc_file)
+        if variable not in ds.variables:
+            raise HTTPException(status_code=400, detail=f"Переменная {variable} не найдена")
+
+        # 📌 Определяем реальную размерность сетки
+        dims = ds.dims
+        if "time" in dims:
+            time_dim = dims["time"]
+        else:
+            time_dim = 1  # Если нет временного измерения, считаем, что оно одно
+
+        ny_max, nx_max = dims.get("ny", 0), dims.get("nx", 0)  # Размеры сетки (ny, nx)
+
+        if nx_max == 0 or ny_max == 0:
+            raise HTTPException(status_code=500, detail="Не удалось определить размеры сетки")
+
+        # 📌 Проверяем, что `slice_index` не выходит за границы
+        # if slice_index >= time_dim:
+        #     raise HTTPException(status_code=400, detail=f"slice_index {slice_index} выходит за пределы (0-{time_dim-1})")
+
+        # 📌 Извлекаем массив данных, как в примере
+        data_array = ds[variable].values
+
+        if data_array.ndim == 3:
+            if slice_index >= data_array.shape[0]:
+                print(f"Индекс временного среза {slice_index} выходит за пределы ({data_array.shape[0]}).")
+                return None
+            data = data_array[slice_index, :, :]
+        else:
+            data = data_array[:, :]
+
+        data = np.squeeze(data)  # Убираем лишние размерности
+
+        # 📌 Определяем границы тайла
+        x1, y1 = x * TILE_SIZE, y * TILE_SIZE
+        x2, y2 = x1 + TILE_SIZE, y1 + TILE_SIZE
+
+        # 📌 Заполняем тайл
+        tile_data = np.full((TILE_SIZE, TILE_SIZE), np.nan)
+
+        for yi in range(y1, y2):
+            for xi in range(x1, x2):
+                lon, lat = from_pixel_to_lonlat(xi, yi, zoom)
+
+                if haversine(lat, lon, center_lat, center_lon) > GRID_RADIUS_KM:
+                    continue  # Не обрабатываем этот пиксель
+
+                nx, ny = lonlat_to_nxny(lon, lat, center_lat, center_lon, nx_max, ny_max)
+                tile_data[yi - y1, xi - x1] = find_closest_node(nx, ny, data)
+
+        ds.close()
+        return tile_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def render_tile(data, variable):
+    """
+    📌 Рендерит тайл (256x256) с интерполированными значениями.
+    """
     norm = Normalize(vmin=np.nanmin(data), vmax=np.nanmax(data))
     
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=128)
-    extent = [lon_min, lon_max, lat_min, lat_max]
-    custom_cmap = get_custom_cmap(variable)
-    ax.imshow(data, extent=extent, origin='upper', cmap=custom_cmap, norm=norm)
-    ax.axis('off')
-    
-    full_map_file = f"{CACHE_DIR}/map_{variable}_{center_lat}_{center_lon}.png"
-    plt.savefig(full_map_file, bbox_inches='tight', pad_inches=0.0, transparent=True)
+    fig, ax = plt.subplots(figsize=(1, 1), dpi=TILE_SIZE)
+    ax.imshow(data, cmap=get_custom_cmap(variable), norm=norm, origin="upper")
+    ax.axis("off")
+
+    buf = BytesIO()
+    plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0, transparent=True)
     plt.close()
-    return full_map_file
-
-# Генерация тайла на лету
-# def split_into_tiles(image_path, z, lon_min, lon_max, lat_min, lat_max):
-#     """Разбивает изображение на тайлы и возвращает их в виде словаря {(x, y): Image}"""
-#     image = Image.open(image_path)
-#     width, height = image.size
-
-#     # Количество тайлов на текущем зуме
-#     num_tiles_x = width // TILE_SIZE
-#     num_tiles_y = height // TILE_SIZE
-
-#     tile_dict = {}
-#     for x in range(num_tiles_x):
-#         for y in range(num_tiles_y):
-#             left = x * TILE_SIZE
-#             upper = y * TILE_SIZE
-#             right = left + TILE_SIZE
-#             lower = upper + TILE_SIZE
-
-#             tile = image.crop((left, upper, right, lower))
-#             tile_dict[(x, y)] = tile
-
-#     return tile_dict
-
-def split_into_tiles(image_path, zoom, lon_min, lon_max, lat_min, lat_max, center_lat, center_lon, radius_km=250):
-    """
-    Разбивает изображение на тайлы, но обрабатывает только те, которые пересекаются с радиусом 250 км.
-    """
-    image = Image.open(image_path)
-    width, height = image.size  # Размер полного изображения
-
-    # Определяем тайлы Leaflet для этого масштаба
-    tile_min = mercantile.tile(lon_min, lat_max, zoom)  # Верхний левый
-    tile_max = mercantile.tile(lon_max, lat_min, zoom)  # Нижний правый
-
-    num_tiles_x = tile_max.x - tile_min.x + 1
-    num_tiles_y = tile_max.y - tile_min.y + 1
-
-    tile_width = width / num_tiles_x
-    tile_height = height / num_tiles_y
-
-    tile_dict = {}
-
-    for x in range(num_tiles_x):
-        for y in range(num_tiles_y):
-            left = int(x * tile_width)
-            upper = int(y * tile_height)
-            right = int(left + tile_width)
-            lower = int(upper + tile_height)
-
-            # Привязываем к глобальным `x, y`
-            global_x = tile_min.x + x
-            global_y = tile_min.y + y
-
-            # Проверяем границы тайла
-            bounds = mercantile.bounds(global_x, global_y, zoom)
-            tile_corners = [
-                (bounds.north, bounds.west),  # Верхний левый
-                (bounds.north, bounds.east),  # Верхний правый
-                (bounds.south, bounds.west),  # Нижний левый
-                (bounds.south, bounds.east),  # Нижний правый
-            ]
-
-            # ⚠️ Если хотя бы один угол тайла в радиусе 250 км — включаем этот тайл
-            tile_inside_radius = any(
-                haversine_distance(center_lat, center_lon, lat, lon) <= radius_km
-                for lat, lon in tile_corners
-            )
-
-            if tile_inside_radius:
-                print(f"✅ Тайл ({global_x}, {global_y}) включен! Границы: {bounds}")
-                
-                # Вырезаем нужную часть изображения
-                tile = image.crop((left, upper, right, lower))
-                tile_dict[(global_x, global_y)] = tile
-            else:
-                print(f"❌ Тайл ({global_x}, {global_y}) исключен!")
-
-    print(f"Сгенерировано {len(tile_dict)} тайлов.")
-    return tile_dict
-
+    buf.seek(0)
+    
+    return buf
 
 
 # API эндпоинт для тайлов
 @app.get("/tiles/{z}/{x}/{y}")
-async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float, locator_code:str, timestamp: str = Query(..., description="Timestamp in ISO format")):
+async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float, locator_code:str, slice_index:int, timestamp: str = Query(..., description="Timestamp in ISO format")):
     """Обрабатывает запрос на тайл, создавая его динамически, если он входит в 250 км от центра."""
     try:
-        if not is_tile_within_radius(x, y, z, lat, lon, 250):
-            return JSONResponse(content={"error": "Tile is outside the 250km range"}, status_code=501)
         # Проверяем, входит ли запрошенный тайл в радиус 250 км
         time_data = parse_folder_structure('./periods')
         # print(time_data)
@@ -619,44 +612,16 @@ async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float
 
         zip_location = get_loc_file(location_list, locator_code)
         file_location = extract_nc_file(zip_location)
+        data = get_tile_data(file_location, variable, x, y, z, lat, lon, slice_index)
+    
+        if np.isnan(data).all():
+            raise HTTPException(status_code=404, detail="Нет данных в пределах этого тайла")
+
+        tile_buf = render_tile(data, variable)
         
-
-        # Загружаем NetCDF данные
-        ds = xr.open_dataset(file_location)
-        if variable not in ds.variables:
-            return JSONResponse(content={"error": "Variable not found"}, status_code=400)
-
-        data_array = ds[variable]
-
-        # Определяем границы тайла
-        bounds = mercantile.bounds(x, y, z)
-        # lon_min, lon_max = bounds.west, bounds.east
-        # lat_min, lat_max = bounds.south, bounds.north
-
-        lon_min, lon_max = lon - 2.25, lon + 2.25
-        lat_min, lat_max = lat - 2.25, lat + 2.25
-
-        # Генерируем полное изображение карты
-        full_map_path = generate_full_map(data_array, lon_min, lon_max, lat_min, lat_max, variable, lat, lon)
-
-        # Разбиваем изображение на тайлы
-        tile_dict = split_into_tiles(full_map_path, z, lon_min, lon_max, lat_min, lat_max, lat, lon)
-        ds.close()
-
-        # Определяем ключ для поиска нужного тайла
-        tile_key = (x, y)  # Оставляем реальные координаты
-
-        if tile_key in tile_dict:
-            # Возвращаем нужный тайл
-            tile_buffer = BytesIO()
-            tile_dict[tile_key].save(tile_buffer, format="PNG")
-            tile_buffer.seek(0)
-
-            return StreamingResponse(tile_buffer, media_type="image/png",
-                                    headers={"Content-Disposition": f"inline; filename=tile_{z}_{x}_{y}.png"})
-        else:
-            return JSONResponse(content={"error": "Tile not found"}, status_code=404)
+        return StreamingResponse(tile_buf, media_type="image/png")
     except Exception as e:
+        print(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/plot")

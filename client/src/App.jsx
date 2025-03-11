@@ -6,9 +6,8 @@ import { ORIGIN } from './globals';
 import { usePeriods } from './hooks/use-periods';
 import { IMAGE_MAP, LOCATOR_MAP, VARIABLE_MAP } from './constants';
 import { Selector } from './components/selector';
-import { MapContainer, TileLayer, Polygon } from 'react-leaflet';
+import { MapContainer, TileLayer } from 'react-leaflet';
 import "leaflet/dist/leaflet.css";
-import { useVariable } from './hooks/use-variable';
 
 
 const App = () => {
@@ -128,6 +127,7 @@ const App = () => {
                         timestamp: selectedPeriod[0],
                         lat: locatorCords.lat,
                         lon: locatorCords.lng,
+                        slice_index: sliceIndex
                     })}`} />
                   }
                 {/* {data && data.map((shape, idx) => {

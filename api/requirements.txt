@@ -9,3 +9,4 @@ pillow
 environs
 shapely
 fastapi[standard]
+dask[complete]
