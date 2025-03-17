@@ -457,8 +457,33 @@ CELL_SIZE_KM = (GRID_RADIUS_KM * 2) / GRID_SIZE
 
 # 📌 Коэффициенты для перевода градусов в километры
 KM_PER_DEGREE_LAT = 110.574  # 1° широты ≈ 110.574 км
-KM_PER_DEGREE_LON = 111.32 * math.cos(math.radians(CENTER_LAT))  # Учитываем широту
+KM_PER_DEGREE_LON = lambda lat: 111.32 * math.cos(math.radians(lat))  # Долгота зависит от широты
 
+def calculate_bearing_from_grid(i, j, lat_size, lon_size, pixel_size):
+    """
+    📌 Вычисляет угол поворота (bearing) относительно центра сетки.
+    """
+    # 📌 Определяем смещение от центра (dx, dy)
+    dx = (j - lon_size // 2) * pixel_size
+    dy = (i - lat_size // 2) * pixel_size
+
+    # 📌 Вычисляем геометрический угол (в градусах)
+    bearing = math.degrees(math.atan2(dy, dx))  
+
+    return bearing
+
+def rotate_point(x, y, angle):
+    """
+    📌 Поворачивает точку (`x, y`) на `angle` градусов вокруг центра (0,0).
+    """
+    angle_rad = math.radians(angle)
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+
+    x_rot = x * cos_a - y * sin_a
+    y_rot = x * sin_a + y * cos_a
+
+    return x_rot, y_rot
 
 def haversine(lat1, lon1, lat2, lon2):
     """
@@ -471,12 +496,15 @@ def haversine(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c  # Расстояние в км
 
-def lonlat_to_nxny(lon, lat, center_lat, center_lon, nx_max, ny_max):
+def lonlat_to_nxny(lon, lat, center_lat, center_lon, nx_max, ny_max, bearing_angle):
     """
-    📌 Преобразует долготу/широту в индексы `nx, ny` относительно центра.
+    📌 Преобразует долготу/широту в индексы `nx, ny`, учитывая угол `bearing_angle`.
     """
-    dx_km = (lon - center_lon) * KM_PER_DEGREE_LON
+    dx_km = (lon - center_lon) * KM_PER_DEGREE_LON(center_lat)
     dy_km = (lat - center_lat) * KM_PER_DEGREE_LAT
+
+    # 🔄 Поворот координат с учетом `bearing`
+    dx_km, dy_km = rotate_point(dx_km, dy_km, -bearing_angle)
 
     nx = nx_max // 2 + int(dx_km / (2 * GRID_RADIUS_KM / nx_max))
     ny = ny_max // 2 - int(dy_km / (2 * GRID_RADIUS_KM / ny_max))  # Инверсия Y (верх -> низ)
@@ -559,6 +587,8 @@ def get_tile_data(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_i
 
         data = np.squeeze(data)  # Убираем лишние размерности
 
+        lat_size, lon_size = data.shape
+
         # 📌 Определяем границы тайла
         x1, y1 = x * TILE_SIZE, y * TILE_SIZE
         x2, y2 = x1 + TILE_SIZE, y1 + TILE_SIZE
@@ -573,7 +603,8 @@ def get_tile_data(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_i
                 if haversine(lat, lon, center_lat, center_lon) > GRID_RADIUS_KM:
                     continue  # Не обрабатываем этот пиксель
 
-                nx, ny = lonlat_to_nxny(lon, lat, center_lat, center_lon, nx_max, ny_max)
+                bearing_angle = calculate_bearing_from_grid(yi, xi, lat_size, lon_size, 1000)
+                nx, ny = lonlat_to_nxny(lon, lat, center_lat, center_lon, nx_max, ny_max, bearing_angle)
                 tile_data[yi - y1, xi - x1] = find_closest_node(nx, ny, data)
 
         ds.close()

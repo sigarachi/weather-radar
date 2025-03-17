@@ -5,9 +5,13 @@ import './App.css'
 import { ORIGIN } from './globals';
 import { usePeriods } from './hooks/use-periods';
 import { IMAGE_MAP, LOCATOR_MAP, VARIABLE_MAP } from './constants';
-import { Selector } from './components/selector';
+import DatePicker, {registerLocale} from 'react-datepicker'
 import { MapContainer, TileLayer } from 'react-leaflet';
 import "leaflet/dist/leaflet.css";
+import "react-datepicker/dist/react-datepicker.css";
+import ru from 'date-fns/locale/ru'
+
+registerLocale('ru', ru)
 
 
 const App = () => {
@@ -15,6 +19,7 @@ const App = () => {
   const [variables, setVariables] = useState([]);
   
   const [selectedPeriod, setSelectedPeriod] = useState('');
+  const [selectedDate, setSelectedDate] = useState()
   const [selectedVariable, setSelectedVariable] = useState('');
   const [locatorOptions, setLocatorOptions] = useState([]);
   const [locator, setLocator] = useState('');
@@ -37,8 +42,16 @@ const App = () => {
       setSelectedVariable(variable);
   };
 
-  const handlePeriodChange = async (event) => {
-    const variable = event.target.value.split(',');
+  const dateLimits = useMemo(() => periods.length ? [
+    new Date(periods[0][0]), new Date(periods[periods.length - 1][0])
+  ] : [], [periods]);
+
+
+  const handlePeriodChange = async () => {
+    const variable = periods.find((el) => new Date(el[0]).toLocaleString("ru-RU", {timeZone: 'Europe/Moscow'}) === selectedDate.toLocaleString("ru-RU", {timeZone: 'Europe/Moscow'}));
+
+    if(!variable) return
+
     setSelectedPeriod(variable)
    
 
@@ -87,10 +100,14 @@ const App = () => {
   return (
       <div className='page-wrapper'>
           <h1>NetCDF Viewer</h1>
-          <div className='flex row'>
-            {Boolean(!isLoading && periods.length) && 
+          <div className='flex row'  style={{paddingLeft: '100px'}}>
+            {/* {Boolean(!isLoading && periods.length) && 
                 <Selector options={periods.map((item) => ({value: item, name: new Date(item[0]).toLocaleDateString('ru-RU', {minute: '2-digit', hour: '2-digit', second: '2-digit'})}))} onChange={handlePeriodChange} value={selectedPeriod} />
-            }
+            } */}
+            {Boolean(!isLoading && periods.length && dateLimits.length) && <DatePicker selected={selectedDate} includeDates={dateLimits}   locale="ru" showTimeSelect timeIntervals={10} onChange={(e) => {
+                setSelectedDate(e);
+                handlePeriodChange()
+            }}  />}
             {locatorOptions.length > 0 && (
                 <select onChange={handleLocatorChange}>
                     <option value="">Выберите локатор</option>
@@ -108,14 +125,14 @@ const App = () => {
                 </select>
             )}
             {showSlice && 
-                <select value={setSliceIndex} onChange={(event) => setSliceIndex(event.target.value)}>
+                <select value={sliceIndex} onChange={(event) => setSliceIndex(event.target.value)}>
                     {Array.from(Array(15).keys()).map((val) => (
                          <option key={val} value={val+1}>{val+1}</option>
                     ))}
                 </select>
             }
           </div>
-           <MapContainer center={[55.75, 37.62]} zoom={10} style={{ height: '100vh', width: '100%' }}>
+           <MapContainer center={[55.75, 37.62]} zoom={10}  style={{ height: '100vh', width: '100%', zIndex: '1' }}>
                   <TileLayer 
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     attribution='&copy; OpenStreetMap contributors'

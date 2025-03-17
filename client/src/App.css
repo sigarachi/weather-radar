@@ -35,3 +35,7 @@ body, #root {
   flex-direction: column;
   gap: 16px;
 }
+
+.react-datepicker__tab-loop {
+  z-index: 100;
+}

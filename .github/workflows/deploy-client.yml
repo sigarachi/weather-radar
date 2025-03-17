@@ -41,7 +41,7 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             cd /home/${{secrets.SSH_USER_FOLDER}}/weather-radar/client
-            npm install
+            npm install --legacy-peer-deps
             npm run build
             sudo -S <<< ${{secrets.SSH_PASSWORD}} cp -a ./dist/* /var/www/html/weather-radar.sigarachi.dev
             su <<< ${{secrets.SSH_PASSWORD}}
