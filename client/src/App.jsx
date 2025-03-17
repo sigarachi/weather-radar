@@ -104,7 +104,7 @@ const App = () => {
             {/* {Boolean(!isLoading && periods.length) && 
                 <Selector options={periods.map((item) => ({value: item, name: new Date(item[0]).toLocaleDateString('ru-RU', {minute: '2-digit', hour: '2-digit', second: '2-digit'})}))} onChange={handlePeriodChange} value={selectedPeriod} />
             } */}
-            {Boolean(!isLoading && periods.length && dateLimits.length) && <DatePicker selected={selectedDate} includeDates={dateLimits}   locale="ru" showTimeSelect timeIntervals={10} onChange={(e) => {
+            {Boolean(!isLoading && periods.length && dateLimits.length) && <DatePicker selected={selectedDate} includeDates={dateLimits} dateFormat="dd/MM/YYYY"  locale="ru" showTimeSelect timeIntervals={10} onChange={(e) => {
                 setSelectedDate(e);
                 handlePeriodChange()
             }}  />}
