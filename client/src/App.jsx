@@ -48,7 +48,7 @@ const App = () => {
 
 
   const handlePeriodChange = async () => {
-    const variable = periods.find((el) => new Date(el[0]).toLocaleString("ru-RU", {timeZone: 'Europe/Moscow'}) === selectedDate.toLocaleString("ru-RU", {timeZone: 'Europe/Moscow'}));
+    const variable = periods.filter((el) => new Date(el[0]).toLocaleString("ru-RU", {timeZone: 'Europe/Moscow'}) === selectedDate.toLocaleString("ru-RU", {timeZone: 'Europe/Moscow'}))[0];
 
     if(!variable) return
 
@@ -104,7 +104,7 @@ const App = () => {
             {/* {Boolean(!isLoading && periods.length) && 
                 <Selector options={periods.map((item) => ({value: item, name: new Date(item[0]).toLocaleDateString('ru-RU', {minute: '2-digit', hour: '2-digit', second: '2-digit'})}))} onChange={handlePeriodChange} value={selectedPeriod} />
             } */}
-            {Boolean(!isLoading && periods.length && dateLimits.length) && <DatePicker selected={selectedDate} includeDates={dateLimits} dateFormat="dd/MM/YYYY"  locale="ru" showTimeSelect timeIntervals={10} onChange={(e) => {
+            {Boolean(!isLoading && periods.length && dateLimits.length) && <DatePicker value={selectedDate} selected={selectedDate} includeDates={dateLimits} dateFormat="dd/MM/YYYY"  locale="ru" showTimeSelect timeIntervals={10} onChange={(e) => {
                 setSelectedDate(e);
                 handlePeriodChange()
             }}  />}
@@ -132,7 +132,7 @@ const App = () => {
                 </select>
             }
           </div>
-           <MapContainer center={[55.75, 37.62]} zoom={10}  style={{ height: '100vh', width: '100%', zIndex: '1' }}>
+           <MapContainer center={[55.75, 37.62]} zoom={10} minZoom={7} maxZoom={12}  style={{ height: '100vh', width: '100%', zIndex: '1' }}>
                   <TileLayer 
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     attribution='&copy; OpenStreetMap contributors'

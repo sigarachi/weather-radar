@@ -195,131 +195,6 @@ def calculate_bounds(center_lat, center_lon, width_px, height_px, pixel_size_deg
 
     return (left, bottom, right, top)
 
-def generate_tiles_from_image(image_path, output_dir, zoom_levels=[8, 9, 10, 11, 12, 13, 14], 
-                              center_lat=None, center_lon=None, pixel_size_deg=0.00001, crs="EPSG:4326"):
-    """
-    Генерация тайлов из изображения с учетом зума.
-
-    Args:
-        image_path (str): Путь к исходному изображению.
-        output_dir (str): Папка для сохранения тайлов.
-        zoom_levels (list): Список уровней зума (по умолчанию от 8 до 14).
-        center_lat (float): Центр изображения (широта).
-        center_lon (float): Центр изображения (долгота).
-        pixel_size_deg (float): Размер пикселя в градусах.
-        crs (str): Система координат (например, "EPSG:4326").
-    """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    print(image_path, output_dir, center_lat, center_lon)
-
-    # Если заданы координаты центра, вычисляем границы и создаем GeoTIFF
-    if center_lat is not None and center_lon is not None:
-        with Image.open(image_path) as img:
-            width_px, height_px = img.size
-
-        bounds = calculate_bounds(center_lat, center_lon, width_px, height_px, pixel_size_deg)
-
-        with Image.open(image_path) as img:
-            img_array = np.array(img)
-
-        if len(img_array.shape) == 2:  # Черно-белое изображение
-            img_array = np.stack([img_array] * 3, axis=-1)  # Преобразуем в RGB
-        if img_array.dtype != np.uint8:
-            img_array = img_array.astype(np.uint8)
-
-        left, bottom, right, top = bounds
-        width, height = img_array.shape[1], img_array.shape[0]
-        x_res = (right - left) / width
-        y_res = (top - bottom) / height
-        transform = from_origin(left, top, x_res, y_res)
-
-        temp_image_path = os.path.join(output_dir, "temp_georeferenced.tif")
-        with rio_open(
-            temp_image_path,
-            "w",
-            driver="GTiff",
-            height=height,
-            width=width,
-            count=img_array.shape[2] if len(img_array.shape) > 2 else 1,
-            dtype=img_array.dtype,
-            crs=CRS.from_string(crs),
-            transform=transform,
-        ) as dst:
-            if len(img_array.shape) > 2:
-                for i in range(img_array.shape[2]):
-                    dst.write(img_array[:, :, i], i + 1)
-            else:
-                dst.write(img_array, 1)
-
-        image_path = temp_image_path  # Используем временный GeoTIFF
-
-    print(f"Обновленный путь к изображению: {image_path}")
-
-    # Генерация тайлов с учетом масштабирования
-    with rasterio.open(image_path) as src:
-        orig_width = src.width
-        orig_height = src.height
-        orig_bounds = src.bounds
-
-        for z in zoom_levels:
-            scale_factor = 2 ** (z - 8)  # Масштабный коэффициент
-            new_width = int(orig_width * scale_factor)
-            new_height = int(orig_height * scale_factor)
-
-            temp_resized_path = os.path.join(output_dir, f"resized_{z}.tif")
-            with rasterio.open(
-                temp_resized_path,
-                "w",
-                driver="GTiff",
-                height=new_height,
-                width=new_width,
-                count=src.count,
-                dtype=src.dtypes[0],
-                crs=src.crs,
-                transform=src.transform * src.transform.scale(1 / scale_factor, 1 / scale_factor)
-            ) as dst:
-                for i in range(1, src.count + 1):
-                    dst.write(
-                        src.read(i, out_shape=(new_height, new_width), resampling=Resampling.bilinear),
-                        i
-                    )
-
-            # Разбиваем на тайлы
-            with COGReader(temp_resized_path) as image:
-                max_tiles = 2 ** z  # Число тайлов по каждой оси
-
-                for x in range(max_tiles):
-                    for y in range(max_tiles):
-                        tile_minx, tile_miny, tile_maxx, tile_maxy = tms.bounds(x, y, z)
-
-                        if (tile_maxx < orig_bounds[0] or tile_minx > orig_bounds[2] or
-                                tile_maxy < orig_bounds[1] or tile_miny > orig_bounds[3]):
-                            continue  # Пропускаем тайлы за пределами изображения
-
-                        try:
-                            tile, mask = image.tile(x, y, z)
-                            if tile is not None:
-                                tile = np.transpose(tile, (1, 2, 0))  # (3, 256, 256) → (256, 256, 3)
-                                tile_image = Image.fromarray(tile)
-
-                                # Создаём директорию для хранения тайлов
-                                tile_path = os.path.join(output_dir, str(z), str(x))
-                                os.makedirs(tile_path, exist_ok=True)
-
-                                tile_image.save(os.path.join(tile_path, f"{y}.png"))
-                                print(f"Сохранён тайл: {z}/{x}/{y}.png")
-
-                        except Exception as e:
-                            print(f"Ошибка при обработке тайла ({x}, {y}, {z}): {e}")
-
-            os.remove(temp_resized_path)  # Удаляем временный файл после обработки
-
-    # Удаляем временный GeoTIFF, если он был создан
-    if center_lat is not None and center_lon is not None and os.path.exists(temp_image_path):
-        os.remove(temp_image_path)
-
 
 def parse_folder_structure(base_path):
     time_periods = []
@@ -530,6 +405,7 @@ def from_pixel_to_lonlat(xp, yp, zoom):
 
 
 def find_closest_node(nx, ny, data):
+    print(data[ny, nx])
     """
     📌 Ищет ближайшую доступную точку в сетке (`nx, ny`).
     """
@@ -537,6 +413,7 @@ def find_closest_node(nx, ny, data):
         return data[ny, nx]  # !!! ВАЖНО: `ny` идет первым!
 
     min_dist = float("inf")
+    #print("shape:", data.shape[0], data.shape[1])
     closest_val = np.nan
 
     for i in range(max(0, ny - 2), min(data.shape[0], ny + 2)):  # Проходим по `ny`
@@ -549,69 +426,40 @@ def find_closest_node(nx, ny, data):
 
     return closest_val
 
-def get_tile_data(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_index=0):
+
+def get_tile_data_new(nc_file, variable, x, y, zoom, slice_index=0):
     """
-    📌 Генерирует данные для запрашиваемого тайла.
+    📌 Генерирует данные для запрашиваемого тайла, используя предварительно вычисленные координаты.
     """
     try:
-        ds = xr.open_dataset(nc_file)
-        if variable not in ds.variables:
-            raise HTTPException(status_code=400, detail=f"Переменная {variable} не найдена")
+        with xr.open_dataset(f"{nc_file}_updated.nc") as ds:
+            if variable not in ds.variables:
+                raise HTTPException(status_code=400, detail=f"Переменная {variable} не найдена")
 
-        # 📌 Определяем реальную размерность сетки
-        dims = ds.dims
-        if "time" in dims:
-            time_dim = dims["time"]
-        else:
-            time_dim = 1  # Если нет временного измерения, считаем, что оно одно
+            x_coords = ds[f"x_zoom_{zoom}"].isel(tile_x=int(x), tile_y=int(y)).values
+            y_coords = ds[f"y_zoom_{zoom}"].isel(tile_x=int(x), tile_y=int(y)).values
 
-        ny_max, nx_max = dims.get("ny", 0), dims.get("nx", 0)  # Размеры сетки (ny, nx)
+            data_array = ds[variable].values
+            if data_array.ndim == 3:
+                if slice_index >= data_array.shape[0]:
+                    print(f"Индекс временного среза {slice_index} выходит за пределы ({data_array.shape[0]}).")
+                    return None
+                data = data_array[slice_index]
+            else:
+                data = data_array
 
-        if nx_max == 0 or ny_max == 0:
-            raise HTTPException(status_code=500, detail="Не удалось определить размеры сетки")
+            data = np.squeeze(data)
+            tile_data = np.full((TILE_SIZE, TILE_SIZE), np.nan)
 
-        # 📌 Проверяем, что `slice_index` не выходит за границы
-        # if slice_index >= time_dim:
-        #     raise HTTPException(status_code=400, detail=f"slice_index {slice_index} выходит за пределы (0-{time_dim-1})")
+            valid_mask = (~np.isnan(x_coords)) & (~np.isnan(y_coords))
+            valid_x = np.clip(x_coords[valid_mask].astype(int), 0, data.shape[1] - 1)
+            valid_y = np.clip(y_coords[valid_mask].astype(int), 0, data.shape[0] - 1)
 
-        # 📌 Извлекаем массив данных, как в примере
-        data_array = ds[variable].values
+            tile_data[valid_mask] = data[valid_y, valid_x]
+            return tile_data
 
-        if data_array.ndim == 3:
-            if slice_index >= data_array.shape[0]:
-                print(f"Индекс временного среза {slice_index} выходит за пределы ({data_array.shape[0]}).")
-                return None
-            data = data_array[slice_index, :, :]
-        else:
-            data = data_array[:, :]
-
-        data = np.squeeze(data)  # Убираем лишние размерности
-
-        lat_size, lon_size = data.shape
-
-        # 📌 Определяем границы тайла
-        x1, y1 = x * TILE_SIZE, y * TILE_SIZE
-        x2, y2 = x1 + TILE_SIZE, y1 + TILE_SIZE
-
-        # 📌 Заполняем тайл
-        tile_data = np.full((TILE_SIZE, TILE_SIZE), np.nan)
-
-        for yi in range(y1, y2):
-            for xi in range(x1, x2):
-                lon, lat = from_pixel_to_lonlat(xi, yi, zoom)
-
-                if haversine(lat, lon, center_lat, center_lon) > GRID_RADIUS_KM:
-                    continue  # Не обрабатываем этот пиксель
-
-                bearing_angle = calculate_bearing_from_grid(yi, xi, lat_size, lon_size, 1000)
-                nx, ny = lonlat_to_nxny(lon, lat, center_lat, center_lon, nx_max, ny_max, bearing_angle)
-                tile_data[yi - y1, xi - x1] = find_closest_node(nx, ny, data)
-
-        ds.close()
-        return tile_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def render_tile(data, variable):
     """
@@ -643,12 +491,13 @@ async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float
 
         zip_location = get_loc_file(location_list, locator_code)
         file_location = extract_nc_file(zip_location)
-        data = get_tile_data(file_location, variable, x, y, z, lat, lon, slice_index)
+        
+        data2= get_tile_data_new(file_location, variable, x, y, z, slice_index)
     
-        if np.isnan(data).all():
+        if np.isnan(data2).all():
             raise HTTPException(status_code=404, detail="Нет данных в пределах этого тайла")
 
-        tile_buf = render_tile(data, variable)
+        tile_buf = render_tile(data2, variable)
         
         return StreamingResponse(tile_buf, media_type="image/png")
     except Exception as e:
