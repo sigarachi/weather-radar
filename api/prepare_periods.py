@@ -381,7 +381,7 @@ def precompute_tile_coordinates(ds, nc_file, zoom_levels, center_lat, center_lon
             )
         
         # Сохраняем Dataset в файл
-        coords_ds.to_netcdf(f"{nc_file}_updated.nc")
+        coords_ds.to_netcdf(f"{nc_file}_updated1.nc", mode='a')
         coords_ds.close()
         ds.close()
         print(3)
@@ -417,11 +417,7 @@ def calc_lon_lat():
                 
             # ds.to_netcdf(f"{file}_updated.nc", mode='a')
 
-            precompute_tile_coordinates(ds, file, [7, 8, 9, 10, 11, 12], ds.attrs.get('lat_station'), ds.attrs.get('lon_station'))
-            
-            
-            
-
+            precompute_tile_coordinates(ds, file, [7,8,9,10,11,12], ds.attrs.get('lat_station'), ds.attrs.get('lon_station'))
 
 
 
