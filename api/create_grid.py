@@ -62,47 +62,43 @@ def process_netcdf(input_file, output_file, km_per_pixel=1):
     """
     # Read input NetCDF file
     with nc.Dataset(input_file, 'r') as src:
-        center_lat = src.lat_station
-        center_lon = src.lon_station
+        # Get station coordinates from attributes
+        center_lat = float(src.getncattr('lat_station'))
+        center_lon = float(src.getncattr('lon_station'))
 
         lats, lons, mask, kdtree, valid_points = calculate_grid(
             center_lat, center_lon, km_per_pixel)
 
-        # Сохраняем плоские индексы для быстрого доступа
-        valid_indices = np.where(valid_points)[0]
+        valid_indices = np.where(mask.ravel() == 1)[0]
 
-        # Create output NetCDF file
         with nc.Dataset(output_file, 'w', format='NETCDF4') as dst:
             # Create dimensions
             dst.createDimension('x', GRID_SIZE)
             dst.createDimension('y', GRID_SIZE)
+            dst.createDimension('valid_points_size', len(valid_indices))
+            # Dimension for coordinates (lon, lat)
+            dst.createDimension('coord_dim', 2)
 
             # Create variables
             lat_var = dst.createVariable('latitude', 'f4', ('y', 'x'))
             lon_var = dst.createVariable('longitude', 'f4', ('y', 'x'))
             mask_var = dst.createVariable('valid_mask', 'i1', ('y', 'x'))
+            valid_idx_var = dst.createVariable(
+                'valid_indices', 'i4', ('valid_points_size',))
+            kd_data_var = dst.createVariable(
+                'kdtree_data', 'f8', ('valid_points_size', 'coord_dim'))
 
             # Write data
             lat_var[:] = lats
             lon_var[:] = lons
             mask_var[:] = mask.astype(np.int8)
+            valid_idx_var[:] = valid_indices
+            kd_data_var[:] = kdtree.data
 
-            # Add attributes
+            # Set attributes
             lat_var.units = 'degrees_north'
             lon_var.units = 'degrees_east'
             mask_var.units = 'boolean'
-            mask_var.description = '1 if point is within 250km radius, 0 otherwise'
-
-            # Add global attributes
-            dst.center_latitude = center_lat
-            dst.center_longitude = center_lon
-            dst.radius_limit = RADIUS_LIMIT
-            dst.grid_size = GRID_SIZE
-            dst.km_per_pixel = km_per_pixel
-            dst.createVariable('valid_indices', 'i4', ('valid_points',))[
-                :] = valid_indices
-            dst.kdtree_data = kdtree.data.tobytes()  # Сохраняем данные дерева
-            dst.kdtree_shape = kdtree.data.shape
 
 
 if __name__ == "__main__":

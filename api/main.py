@@ -26,6 +26,7 @@ from shapely.geometry import Polygon, mapping, Point
 from shapely.ops import unary_union
 import mercantile
 from io import BytesIO
+from scipy.spatial import cKDTree
 # os.unsetenv('PROJ_DATA')
 # os.unsetenv('PROJ_LIB')
 
@@ -147,6 +148,7 @@ custom_colors_map = {
 def get_custom_cmap(variable: str = ""):
     return LinearSegmentedColormap.from_list("custom_gradient", custom_colors_map[variable])
 
+
 def add_overviews(image_path):
     """
     Add overviews to a GeoTIFF file.
@@ -261,13 +263,17 @@ def find_all_zip_files(folder_path):
     return files
 
 # Функция для вычисления расстояния между двумя точками (формула Хаверсина)
+
+
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371  # Радиус Земли в км
     dlat = radians(lat2 - lat1)
     dlon = radians(lon2 - lon1)
-    a = sin(dlat / 2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2)**2
+    a = sin(dlat / 2)**2 + cos(radians(lat1)) * \
+        cos(radians(lat2)) * sin(dlon / 2)**2
     c = 2 * atan2(sqrt(a), sqrt(1 - a))
     return R * c  # Возвращает расстояние в км
+
 
 def get_file_path(time_data, timestamp, all=False):
     for time_iso, folder_path in time_data:
@@ -306,10 +312,12 @@ CACHE_DIR = "./cache"  # Директория для кэширования ка
 # Создаем директорию для кэша, если её нет
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+
 def get_cached_map(variable, center_lat, center_lon):
     """Проверяет, существует ли уже сгенерированная карта."""
     filename = f"{CACHE_DIR}/map_{variable}_{center_lat}_{center_lon}.png"
     return filename if os.path.exists(filename) else None
+
 
 def tile_center(x, y, z):
     """Возвращает точные координаты центра тайла (lat, lon)"""
@@ -318,6 +326,7 @@ def tile_center(x, y, z):
     lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * y / n)))
     lat = math.degrees(lat_rad)
     return lat, lon
+
 
 TILE_SIZE = 256  # Размер тайла
 GRID_RADIUS_KM = 250  # Радиус сетки данных
@@ -332,7 +341,11 @@ CELL_SIZE_KM = (GRID_RADIUS_KM * 2) / GRID_SIZE
 
 # 📌 Коэффициенты для перевода градусов в километры
 KM_PER_DEGREE_LAT = 110.574  # 1° широты ≈ 110.574 км
-KM_PER_DEGREE_LON = lambda lat: 111.32 * math.cos(math.radians(lat))  # Долгота зависит от широты
+
+
+def KM_PER_DEGREE_LON(lat): return 111.32 * \
+    math.cos(math.radians(lat))  # Долгота зависит от широты
+
 
 def calculate_bearing_from_grid(i, j, lat_size, lon_size, pixel_size):
     """
@@ -343,9 +356,10 @@ def calculate_bearing_from_grid(i, j, lat_size, lon_size, pixel_size):
     dy = (i - lat_size // 2) * pixel_size
 
     # 📌 Вычисляем геометрический угол (в градусах)
-    bearing = math.degrees(math.atan2(dy, dx))  
+    bearing = math.degrees(math.atan2(dy, dx))
 
     return bearing
+
 
 def rotate_point(x, y, angle):
     """
@@ -360,6 +374,7 @@ def rotate_point(x, y, angle):
 
     return x_rot, y_rot
 
+
 def haversine(lat1, lon1, lat2, lon2):
     """
     📌 Формула Хаверсина – вычисляет расстояние между двумя координатами.
@@ -367,9 +382,11 @@ def haversine(lat1, lon1, lat2, lon2):
     R = 6371  # Радиус Земли в км
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * \
+        math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c  # Расстояние в км
+
 
 def lonlat_to_nxny(lon, lat, center_lat, center_lon, nx_max, ny_max, bearing_angle):
     """
@@ -382,7 +399,8 @@ def lonlat_to_nxny(lon, lat, center_lat, center_lon, nx_max, ny_max, bearing_ang
     dx_km, dy_km = rotate_point(dx_km, dy_km, -bearing_angle)
 
     nx = nx_max // 2 + int(dx_km / (2 * GRID_RADIUS_KM / nx_max))
-    ny = ny_max // 2 - int(dy_km / (2 * GRID_RADIUS_KM / ny_max))  # Инверсия Y (верх -> низ)
+    # Инверсия Y (верх -> низ)
+    ny = ny_max // 2 - int(dy_km / (2 * GRID_RADIUS_KM / ny_max))
 
     # 📌 Ограничиваем индексы, чтобы не выйти за границы массива
     nx = max(0, min(nx, nx_max - 1))
@@ -394,12 +412,20 @@ def lonlat_to_nxny(lon, lat, center_lat, center_lon, nx_max, ny_max, bearing_ang
 def from_pixel_to_lonlat(xp, yp, zoom):
     """
     📌 Преобразует пиксельные координаты (xp, yp) в широту/долготу.
+    Поддерживает как скалярные значения, так и массивы.
     """
     PixelsAtZoom = 256 * 2**zoom
     half_size = PixelsAtZoom / 2
 
+    # Преобразуем входные данные в массивы numpy, если они еще не являются таковыми
+    xp = np.asarray(xp)
+    yp = np.asarray(yp)
+
+    # Вычисляем долготу и широту для всех точек
     lon = (xp - half_size) * (360 / PixelsAtZoom)
-    lat = (2 * math.atan(math.exp((yp - half_size) / -(PixelsAtZoom / (2 * math.pi)))) - math.pi / 2) * (180 / math.pi)
+    lat_rad = 2 * np.arctan(np.exp((yp - half_size) / -
+                            (PixelsAtZoom / (2 * np.pi)))) - np.pi / 2
+    lat = lat_rad * (180 / np.pi)
 
     return lon, lat
 
@@ -413,13 +439,16 @@ def find_closest_node(nx, ny, data):
         return data[ny, nx]  # !!! ВАЖНО: `ny` идет первым!
 
     min_dist = float("inf")
-    #print("shape:", data.shape[0], data.shape[1])
+    # print("shape:", data.shape[0], data.shape[1])
     closest_val = np.nan
 
-    for i in range(max(0, ny - 2), min(data.shape[0], ny + 2)):  # Проходим по `ny`
-        for j in range(max(0, nx - 2), min(data.shape[1], nx + 2)):  # Проходим по `nx`
+    # Проходим по `ny`
+    for i in range(max(0, ny - 2), min(data.shape[0], ny + 2)):
+        # Проходим по `nx`
+        for j in range(max(0, nx - 2), min(data.shape[1], nx + 2)):
             if not np.isnan(data[i, j]):
-                dist = math.sqrt((nx - j) ** 2 + (ny - i) ** 2)  # !!! ВАЖНО: `(nx, ny) → (j, i)`
+                # !!! ВАЖНО: `(nx, ny) → (j, i)`
+                dist = math.sqrt((nx - j) ** 2 + (ny - i) ** 2)
                 if dist < min_dist:
                     min_dist = dist
                     closest_val = data[i, j]
@@ -427,61 +456,129 @@ def find_closest_node(nx, ny, data):
     return closest_val
 
 
-def get_tile_data_new(nc_file, variable, x, y, zoom, slice_index=0):
+def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_index=0):
     """
-    📌 Генерирует данные для запрашиваемого тайла, используя предварительно вычисленные координаты.
+    📌 Генерирует данные для запрашиваемого тайла.
     """
     try:
-        with xr.open_dataset(f"{nc_file}_updated.nc") as ds:
-            if variable not in ds.variables:
-                raise HTTPException(status_code=400, detail=f"Переменная {variable} не найдена")
+        # Открываем файлы
+        ds_data = xr.open_dataset(nc_file)
+        ds_grid = xr.open_dataset("grid_coordinates.nc")
 
-            x_coords = ds[f"x_zoom_{zoom}"].isel(tile_x=int(x), tile_y=int(y)).values
-            y_coords = ds[f"y_zoom_{zoom}"].isel(tile_x=int(x), tile_y=int(y)).values
+        # Проверяем наличие переменной
+        if variable not in ds_data.variables:
+            raise ValueError(
+                f"Переменная {variable} не найдена в файле данных")
 
-            data_array = ds[variable].values
-            if data_array.ndim == 3:
-                if slice_index >= data_array.shape[0]:
-                    print(f"Индекс временного среза {slice_index} выходит за пределы ({data_array.shape[0]}).")
-                    return None
-                data = data_array[slice_index]
-            else:
-                data = data_array
+        # Загружаем данные
+        data_array = ds_data[variable].values
+        if data_array.ndim == 3:
+            if slice_index >= data_array.shape[0]:
+                print(
+                    f"Индекс временного среза {slice_index} выходит за пределы ({data_array.shape[0]}).")
+                return None
+            data = data_array[slice_index, :, :]
+        else:
+            data = data_array[:, :]
 
-            data = np.squeeze(data)
-            tile_data = np.full((TILE_SIZE, TILE_SIZE), np.nan)
+        data = np.squeeze(data)  # Убираем лишние размерности
 
-            valid_mask = (~np.isnan(x_coords)) & (~np.isnan(y_coords))
-            valid_x = np.clip(x_coords[valid_mask].astype(int), 0, data.shape[1] - 1)
-            valid_y = np.clip(y_coords[valid_mask].astype(int), 0, data.shape[0] - 1)
+        # Загружаем предварительно вычисленные данные
+        mask = ds_grid['valid_mask'][:]
+        valid_indices = ds_grid['valid_indices'][:]
+        kdtree_data = ds_grid['kdtree_data'][:]
 
-            tile_data[valid_mask] = data[valid_y, valid_x]
-            return tile_data
+        print(f"Data shape: {data.shape}")
+        print(f"Mask shape: {mask.shape}")
+        print(f"Valid indices shape: {valid_indices.shape}")
+        print(f"KDTree data shape: {kdtree_data.shape}")
+
+        # Создаем новое KD-дерево
+        kdtree = cKDTree(kdtree_data)
+
+        # Вычисляем границы тайла
+        x1, y1 = x * TILE_SIZE, y * TILE_SIZE
+        x2, y2 = x1 + TILE_SIZE, y1 + TILE_SIZE
+
+        # Создаем координатную сетку для тайла
+        xi, yi = np.meshgrid(np.arange(x1, x2), np.arange(y1, y2))
+
+        # Преобразуем пиксельные координаты в географические
+        lons, lats = from_pixel_to_lonlat(xi.ravel(), yi.ravel(), zoom)
+
+        # Проверяем расстояние для каждой точки
+        distances = np.array([haversine(lat, lon, center_lat, center_lon)
+                              for lat, lon in zip(lats, lons)])
+
+        # Создаем маску для точек в пределах радиуса
+        in_radius = distances <= GRID_RADIUS_KM
+
+        if not np.any(in_radius):
+            print("Тайл полностью вне радиуса 250 км")
+            return None
+
+        # Создаем массив запросов только для точек в радиусе
+        query_points = np.column_stack([lons[in_radius], lats[in_radius]])
+
+        # Находим ближайшие точки в сетке только для точек в радиусе
+        distances, indices = kdtree.query(query_points)
+
+        # Проверяем границы индексов
+        indices = np.clip(indices, 0, len(valid_indices) - 1)
+        grid_indices = valid_indices[indices]
+
+        print(f"Max grid index: {np.max(grid_indices)}")
+        print(f"Data array size: {data.size}")
+
+        # Преобразуем индексы
+        ny, nx = mask.shape
+        y_idx = np.clip(grid_indices // nx, 0, ny - 1)
+        x_idx = np.clip(grid_indices % nx, 0, nx - 1)
+
+        # Формируем тайл
+        tile_data = np.full((TILE_SIZE, TILE_SIZE), np.nan)
+
+        # Заполняем только валидные точки
+        valid_mask = (y_idx < ny) & (x_idx < nx) & (mask[y_idx, x_idx] == 1)
+        if np.any(valid_mask):
+            # Создаем маску для исходного тайла
+            tile_mask = np.zeros((TILE_SIZE, TILE_SIZE), dtype=bool)
+            tile_mask.ravel()[in_radius] = valid_mask
+
+            # Заполняем только валидные точки в радиусе
+            tile_data[tile_mask] = data[y_idx[valid_mask], x_idx[valid_mask]]
+
+        return tile_data
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise ValueError(f"Ошибка при обработке тайла: {str(e)}")
+    finally:
+        ds_data.close()
+        ds_grid.close()
+
 
 def render_tile(data, variable):
     """
     📌 Рендерит тайл (256x256) с интерполированными значениями.
     """
     norm = Normalize(vmin=np.nanmin(data), vmax=np.nanmax(data))
-    
+
     fig, ax = plt.subplots(figsize=(1, 1), dpi=TILE_SIZE)
     ax.imshow(data, cmap=get_custom_cmap(variable), norm=norm, origin="upper")
     ax.axis("off")
 
     buf = BytesIO()
-    plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0, transparent=True)
+    plt.savefig(buf, format="png", bbox_inches="tight",
+                pad_inches=0, transparent=True)
     plt.close()
     buf.seek(0)
-    
+
     return buf
 
 
 # API эндпоинт для тайлов
 @app.get("/tiles/{z}/{x}/{y}")
-async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float, locator_code:str, slice_index:int, timestamp: str = Query(..., description="Timestamp in ISO format")):
+async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float, locator_code: str, slice_index: int, timestamp: str = Query(..., description="Timestamp in ISO format")):
     """Обрабатывает запрос на тайл, создавая его динамически, если он входит в 250 км от центра."""
     try:
         # Проверяем, входит ли запрошенный тайл в радиус 250 км
@@ -491,21 +588,24 @@ async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float
 
         zip_location = get_loc_file(location_list, locator_code)
         file_location = extract_nc_file(zip_location)
-        
-        data2= get_tile_data_new(file_location, variable, x, y, z, slice_index)
-    
+
+        data2 = get_tile_data_new(
+            file_location, variable, x, y, z, lat, lon, slice_index)
+
         if np.isnan(data2).all():
-            raise HTTPException(status_code=404, detail="Нет данных в пределах этого тайла")
+            raise HTTPException(
+                status_code=404, detail="Нет данных в пределах этого тайла")
 
         tile_buf = render_tile(data2, variable)
-        
+
         return StreamingResponse(tile_buf, media_type="image/png")
     except Exception as e:
         print(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+
 @app.get("/plot")
-async def get_plot(variable: str, locator_code: str = "", lat=0, lon=0, timestamp: str = Query(..., description="Timestamp in ISO format"), base_path: str = "path/to/your/folder", slice_index:int =1):
+async def get_plot(variable: str, locator_code: str = "", lat=0, lon=0, timestamp: str = Query(..., description="Timestamp in ISO format"), base_path: str = "path/to/your/folder", slice_index: int = 1):
     try:
         time_data = parse_folder_structure('./periods')
         # print(time_data)
@@ -528,8 +628,8 @@ async def get_plot(variable: str, locator_code: str = "", lat=0, lon=0, timestam
         output_file = plot_data_on_map_custom_json_by_color(
             data_array, float(lat), float(lon), variable, slice_index=slice_index)
         ds.close()
-        #print(output_file)
-        #generate_tiles_from_image(output_file, TILES_DIR, center_lat=lat, center_lon=lon)
+        # print(output_file)
+        # generate_tiles_from_image(output_file, TILES_DIR, center_lat=lat, center_lon=lon)
 
         return JSONResponse(content=output_file, status_code=200)
     except Exception as e:
