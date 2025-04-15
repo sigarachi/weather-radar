@@ -456,7 +456,7 @@ def find_closest_node(nx, ny, data):
     return closest_val
 
 
-def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_index=0):
+def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_index=0, locator_code=""):
     """
     📌 Генерирует данные для запрашиваемого тайла.
     """
@@ -484,7 +484,7 @@ def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, sli
 
         # Открываем файлы только если тайл может содержать данные
         ds_data = xr.open_dataset(nc_file)
-        ds_grid = xr.open_dataset("grid_coordinates.nc")
+        ds_grid = xr.open_dataset(f"grid_coordinates{locator_code}.nc")
 
         # Проверяем наличие переменной
         if variable not in ds_data.variables:
@@ -613,7 +613,7 @@ async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float
         file_location = extract_nc_file(zip_location)
 
         data2 = get_tile_data_new(
-            file_location, variable, x, y, z, lat, lon, slice_index)
+            file_location, variable, x, y, z, lat, lon, slice_index, locator_code)
 
         if np.isnan(data2).all():
             raise HTTPException(
