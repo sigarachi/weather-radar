@@ -461,7 +461,28 @@ def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, sli
     📌 Генерирует данные для запрашиваемого тайла.
     """
     try:
-        # Открываем файлы
+        # Сначала проверяем расстояние от центра тайла до центра данных
+        tile_center_x = (x + 0.5) * TILE_SIZE
+        tile_center_y = (y + 0.5) * TILE_SIZE
+        tile_center_lon, tile_center_lat = from_pixel_to_lonlat(
+            tile_center_x, tile_center_y, zoom)
+
+        # Проверяем расстояние от центра тайла до центра данных
+        center_distance = haversine(
+            tile_center_lat, tile_center_lon, center_lat, center_lon)
+
+        # Если центр тайла находится за пределами радиуса + половина диагонали тайла,
+        # то весь тайл точно вне радиуса
+        tile_diagonal_km = haversine(tile_center_lat, tile_center_lon,
+                                     *from_pixel_to_lonlat(tile_center_x + TILE_SIZE/2,
+                                                           tile_center_y + TILE_SIZE/2, zoom))
+
+        if center_distance > (GRID_RADIUS_KM + tile_diagonal_km):
+            print(
+                f"Тайл полностью вне радиуса 250 км (расстояние: {center_distance:.2f} км)")
+            return None
+
+        # Открываем файлы только если тайл может содержать данные
         ds_data = xr.open_dataset(nc_file)
         ds_grid = xr.open_dataset("grid_coordinates.nc")
 
@@ -553,8 +574,10 @@ def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, sli
     except Exception as e:
         raise ValueError(f"Ошибка при обработке тайла: {str(e)}")
     finally:
-        ds_data.close()
-        ds_grid.close()
+        if 'ds_data' in locals():
+            ds_data.close()
+        if 'ds_grid' in locals():
+            ds_grid.close()
 
 
 def render_tile(data, variable):
