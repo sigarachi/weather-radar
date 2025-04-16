@@ -1,6 +1,6 @@
+import atexit
 import os
-
-
+from functools import lru_cache
 from fastapi import FastAPI, Query, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -198,56 +198,70 @@ def calculate_bounds(center_lat, center_lon, width_px, height_px, pixel_size_deg
     return (left, bottom, right, top)
 
 
+@lru_cache(maxsize=128)
+def extract_nc_file(zip_path):
+    """
+    Extracts .nc file from a zip archive and returns its path.
+    Uses caching to avoid repeated extractions of the same file.
+    """
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            for file_name in zip_ref.namelist():
+                if file_name.endswith(".nc"):
+                    extracted_path = zip_ref.extract(
+                        file_name, os.path.dirname(zip_path))
+                    return extracted_path
+        return None
+    except Exception as e:
+        print(f"Error extracting NC file: {e}")
+        return None
+
+
+# Add caching decorators
+@lru_cache(maxsize=128)
 def parse_folder_structure(base_path):
     time_periods = []
-
-    for year in sorted(os.listdir(base_path)):
-        year_path = os.path.join(base_path, year)
-        if not os.path.isdir(year_path) or not year.isdigit():
-            continue
-
-        for month in sorted(os.listdir(year_path)):
-            month_path = os.path.join(year_path, month)
-            if not os.path.isdir(month_path) or not month.isdigit():
+    try:
+        for year in sorted(os.listdir(base_path)):
+            year_path = os.path.join(base_path, year)
+            if not os.path.isdir(year_path) or not year.isdigit():
                 continue
 
-            for day in sorted(os.listdir(month_path)):
-                day_path = os.path.join(month_path, day)
-                if not os.path.isdir(day_path) or not day.isdigit():
+            for month in sorted(os.listdir(year_path)):
+                month_path = os.path.join(year_path, month)
+                if not os.path.isdir(month_path) or not month.isdigit():
                     continue
 
-                for hour in sorted(os.listdir(day_path)):
-                    hour_path = os.path.join(day_path, hour)
-                    if not os.path.isdir(hour_path) or not hour.isdigit():
+                for day in sorted(os.listdir(month_path)):
+                    day_path = os.path.join(month_path, day)
+                    if not os.path.isdir(day_path) or not day.isdigit():
                         continue
 
-                    for minute in sorted(os.listdir(hour_path)):
-                        minute_path = os.path.join(hour_path, minute)
-                        if not os.path.isdir(minute_path) or not minute.isdigit():
+                    for hour in sorted(os.listdir(day_path)):
+                        hour_path = os.path.join(day_path, hour)
+                        if not os.path.isdir(hour_path) or not hour.isdigit():
                             continue
 
-                        try:
-                            timestamp = datetime(int(year), int(
-                                month), int(day), int(hour), int(minute))
-                            time_periods.append(
-                                (timestamp.isoformat(), minute_path))
-                        except ValueError:
-                            print(
-                                f"Skipping invalid date: {year}-{month}-{day} {hour}:{minute}")
+                        for minute in sorted(os.listdir(hour_path)):
+                            minute_path = os.path.join(hour_path, minute)
+                            if not os.path.isdir(minute_path) or not minute.isdigit():
+                                continue
 
+                            try:
+                                timestamp = datetime(int(year), int(
+                                    month), int(day), int(hour), int(minute))
+                                time_periods.append(
+                                    (timestamp.isoformat(), minute_path))
+                            except ValueError:
+                                print(
+                                    f"Skipping invalid date: {year}-{month}-{day} {hour}:{minute}")
+    except Exception as e:
+        print(f"Error parsing folder structure: {e}")
+        return []
     return time_periods
 
 
-def extract_nc_file(zip_path):
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        for file_name in zip_ref.namelist():
-            if file_name.endswith(".nc"):
-                extracted_path = zip_ref.extract(
-                    file_name, os.path.dirname(zip_path))
-                return extracted_path
-    return None
-
-
+@lru_cache(maxsize=128)
 def find_zip_file(folder_path):
     for file in os.listdir(folder_path):
         if file.endswith(".zip"):
@@ -255,12 +269,14 @@ def find_zip_file(folder_path):
     return None
 
 
+@lru_cache(maxsize=128)
 def find_all_zip_files(folder_path):
     files = []
     for file in os.listdir(folder_path):
         if file.endswith(".zip"):
             files.append(os.path.join(folder_path, file))
     return files
+
 
 # Функция для вычисления расстояния между двумя точками (формула Хаверсина)
 
@@ -482,9 +498,9 @@ def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, sli
                 f"Тайл полностью вне радиуса 250 км (расстояние: {center_distance:.2f} км)")
             return None
 
-        # Открываем файлы только если тайл может содержать данные
-        ds_data = xr.open_dataset(nc_file)
-        ds_grid = xr.open_dataset(f"grid_coordinates{locator_code}.nc")
+        # Используем кэшированные датасеты
+        ds_data = get_cached_dataset(nc_file)
+        ds_grid = get_cached_dataset(f"grid_coordinates{locator_code}.nc")
 
         # Проверяем наличие переменной
         if variable not in ds_data.variables:
@@ -509,11 +525,6 @@ def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, sli
         valid_indices = ds_grid['valid_indices'][:]
         kdtree_data = ds_grid['kdtree_data'][:]
 
-        print(f"Data shape: {data.shape}")
-        print(f"Mask shape: {mask.shape}")
-        print(f"Valid indices shape: {valid_indices.shape}")
-        print(f"KDTree data shape: {kdtree_data.shape}")
-
         # Создаем новое KD-дерево
         kdtree = cKDTree(kdtree_data)
 
@@ -527,7 +538,7 @@ def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, sli
         # Преобразуем пиксельные координаты в географические
         lons, lats = from_pixel_to_lonlat(xi.ravel(), yi.ravel(), zoom)
 
-        # Проверяем расстояние для каждой точки
+        # Векторизованное вычисление расстояний
         distances = np.array([haversine(lat, lon, center_lat, center_lon)
                               for lat, lon in zip(lats, lons)])
 
@@ -547,9 +558,6 @@ def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, sli
         # Проверяем границы индексов
         indices = np.clip(indices, 0, len(valid_indices) - 1)
         grid_indices = valid_indices[indices]
-
-        print(f"Max grid index: {np.max(grid_indices)}")
-        print(f"Data array size: {data.size}")
 
         # Преобразуем индексы
         ny, nx = mask.shape
@@ -573,30 +581,47 @@ def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, sli
 
     except Exception as e:
         raise ValueError(f"Ошибка при обработке тайла: {str(e)}")
-    finally:
-        if 'ds_data' in locals():
-            ds_data.close()
-        if 'ds_grid' in locals():
-            ds_grid.close()
+
+
+# Add figure caching
+figure_cache = {}
+
+
+def get_cached_figure():
+    if 'fig' not in figure_cache:
+        figure_cache['fig'] = plt.figure(figsize=(1, 1), dpi=TILE_SIZE)
+        figure_cache['ax'] = figure_cache['fig'].add_subplot(111)
+        figure_cache['ax'].axis("off")
+    return figure_cache['fig'], figure_cache['ax']
 
 
 def render_tile(data, variable):
     """
     📌 Рендерит тайл (256x256) с интерполированными значениями.
     """
-    norm = Normalize(vmin=np.nanmin(data), vmax=np.nanmax(data))
+    try:
+        norm = Normalize(vmin=np.nanmin(data), vmax=np.nanmax(data))
 
-    fig, ax = plt.subplots(figsize=(1, 1), dpi=TILE_SIZE)
-    ax.imshow(data, cmap=get_custom_cmap(variable), norm=norm, origin="upper")
-    ax.axis("off")
+        # Используем кэшированную фигуру
+        fig, ax = get_cached_figure()
 
-    buf = BytesIO()
-    plt.savefig(buf, format="png", bbox_inches="tight",
-                pad_inches=0, transparent=True)
-    plt.close()
-    buf.seek(0)
+        # Очищаем предыдущие данные
+        ax.clear()
+        ax.axis("off")
 
-    return buf
+        # Рендерим новые данные
+        ax.imshow(data, cmap=get_custom_cmap(
+            variable), norm=norm, origin="upper")
+
+        buf = BytesIO()
+        plt.savefig(buf, format="png", bbox_inches="tight",
+                    pad_inches=0, transparent=True)
+        buf.seek(0)
+
+        return buf
+    except Exception as e:
+        print(f"Error rendering tile: {e}")
+        return None
 
 
 # API эндпоинт для тайлов
@@ -699,3 +724,22 @@ async def get_variables(locator_code: str = "RUDL", timestamp: str = Query(..., 
         return JSONResponse(content=variables, status_code=200)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+# Add dataset caching
+dataset_cache = {}
+
+
+def get_cached_dataset(file_path):
+    if file_path not in dataset_cache:
+        dataset_cache[file_path] = xr.open_dataset(file_path)
+    return dataset_cache[file_path]
+
+
+def clear_dataset_cache():
+    for ds in dataset_cache.values():
+        ds.close()
+    dataset_cache.clear()
+
+
+# Add periodic cache clearing
+atexit.register(clear_dataset_cache)
