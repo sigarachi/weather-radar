@@ -27,8 +27,6 @@ from shapely.ops import unary_union
 import mercantile
 from io import BytesIO
 from scipy.spatial import cKDTree
-# os.unsetenv('PROJ_DATA')
-# os.unsetenv('PROJ_LIB')
 
 
 env = Env()
@@ -55,98 +53,186 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-custom_colors_ZH = [
-    '#dbdadb',
-    '#a7a7a7',
-    '#aad3ec',
-    '#cfff9a',
-    '#54fe39',
-    '#00aafd',
-    '#024dff',
-    '#0000ce',
-    '#010080',
-    '#ffff01',
-    '#fe8000',
-    '#ff7e01',
-    '#ff3c36',
-    '#fe0000',
-    '#49dd01',
-    '#00a800',
-    '#f400f3',
-    '#aa00ff',
-    '#720000'
-]
-
-custom_colors_VR = [
-    '#013a10',
-    '#005822',
-    '#1b7b3b',
-    '#399a53',
-    '#61b266',
-    '#7fc589',
-    '#9ccaa3',
-    '#bcd8c2',
-    '#daf0db',
-    '#ffffff',
-    '#fedcd0',
-    '#fdc4b0',
-    '#f7a688',
-    '#fa8267',
-    '#ee603c',
-    '#d92d1f',
-    '#b90b0c',
-    '#8b0b0c',
-    '#5f0004'
-]
-
-custom_colors_ZDR = ['#212892', '#105380', '#1CBEFE', '#2FE1FF', '#72FEFB', '#74FF88', '#7CB846', '#008601',
-                     '#FFE202', '#E0BF4C', '#D49802', '#FEA8A7', '#E6594F', '#F81600', '#B90B0A', '#BE96AE', '#7F586A']
-custom_colors_FDP = ['#F665E6', '#FC90C2', '#FBB59C', '#FCD472', '#F2ED3B', '#D0E818', '#A6D912', '#7ACB0D',
-                     '#48B90F', '#35A43B', '#448A72', '#3B6FA1', '#2A4EC8', '#2827E4', '#591EF2', '#8535FA', '#AE40FB', '#DB48F9']
-custom_colors_roHV = ['#441C02', '#833B00', '#C15700', '#FF8001', '#FFC0C0',
-                      '#70FFFF', '#01D8DB', '#00CB00', '#01E900', '#AAFE50', '#CBFE97', '#FFFE80']
-custom_colors_SV = ['#E3F7F8', '#CBF8F3', '#9AECEA', '#81DE6C',
-                    '#F8F649', '#FDCE20', '#F9942A', '#F84E2D', '#E7294D', '#AE1D94']
-custom_colors_TB = ['#E6E6E6', '#FDCD00', '#FF3300', '#CC0003']
-custom_colors_DPmap = ['#9FA9B2', '#A3C6FF', '#45FF92', '#01C15A', '#009800', '#FFFF81', '#4088FE', '#0038FF', '#000074',
-                       '#FFAB7F', '#FF557F', '#FF0101', '#CA6702', '#894401', '#610000', '#FFAAFF', '#FF54FF', '#C600C7', '#43405D']
-custom_colors_Hngo = ['#EAF4FE', '#CFE7FF', '#B9DBFE', '#9CCFFE', '#56ABFE', '#027FFF', '#006ADA', '#005FBD',
-                      '#0052A2', '#024289', '#027500', '#00AB01', '#25FF25', '#FFFF01', '#FF9899', '#FE0000', '#A60000', '#710100']
-custom_colors_VIL = ['#DCEFFD', '#B1DAFA', '#88C4FF', '#4AA5FE', '#95FDFE', '#4BFFFF', '#01D8DA', '#00CB00',
-                     '#02EA00', '#A7FF50', '#CBFF98', '#FFFF81', '#FF9B8C', '#FF3F40', '#FA6AE3', '#C400C4', '#A60000', '#720000']
-custom_colors_R = ['#9B9B9B', '#868887', '#0055FE', '#010080', '#FFFF00', '#C9EF04',
-                   '#FDAB00', '#FF5600', '#FE0000', '#81FF7F', '#02A901', '#FE83F5', '#D000D0']
-custom_colors_Qp = ['#FFAAFF', '#D0E9FF', '#00AAFF', '#004CFE', '#0000C5', '#00007E',
-                    '#FEFF01', '#FF7F02', '#E5490C', '#FD0100', '#01BE00', '#007500', '#FF00FF', '#CC009D']
-custom_colors_Hvgo = ['#07FEA5', '#1BF36C', '#1FBD82', '#229470', '#257164', '#164137', '#01CCEA', '#0287E4',
-                      '#0136D0', '#05176D', '#D3B51F', '#DA491A', '#D91A12', '#84050C', '#43A804', '#033F03', '#A31047', '#DB2F9D']
-
-custom_colors_map = {
-    'Zh': custom_colors_ZH,
-    'Zv': custom_colors_ZH,
-    'Vr': custom_colors_VR,
-    'Zdr': custom_colors_ZDR,
-    'Fdp': custom_colors_FDP,
-    'roHV': custom_colors_roHV,
-    'Sg': custom_colors_SV,
-    'Sv': custom_colors_SV,
-    'Tb': custom_colors_TB,
-    'DPmap': custom_colors_DPmap,
-    'Hngo': custom_colors_Hngo,
-    'Hvgo': custom_colors_Hvgo,
-    'VIL': custom_colors_VIL,
-    'R': custom_colors_R,
-    'Qp3': custom_colors_Qp,
-    'Qp6': custom_colors_Qp,
-    'Qp12': custom_colors_Qp,
-    'Qp24': custom_colors_Qp,
+# Define color ranges for each variable type
+color_ranges = {
+    'Zh': {
+        'ranges': [-32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40],
+        'colors': [
+            '#dbdadb', '#a7a7a7', '#aad3ec', '#cfff9a', '#54fe39',
+            '#00aafd', '#024dff', '#0000ce', '#010080', '#ffff01',
+            '#fe8000', '#ff7e01', '#ff3c36', '#fe0000', '#49dd01',
+            '#00a800', '#f400f3', '#aa00ff', '#720000'
+        ]
+    },
+    'Zv': {
+        'ranges': [-32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40],
+        'colors': [
+            '#dbdadb', '#a7a7a7', '#aad3ec', '#cfff9a', '#54fe39',
+            '#00aafd', '#024dff', '#0000ce', '#010080', '#ffff01',
+            '#fe8000', '#ff7e01', '#ff3c36', '#fe0000', '#49dd01',
+            '#00a800', '#f400f3', '#aa00ff', '#720000'
+        ]
+    },
+    'Vr': {
+        'ranges': [-32, -28, -24, -20, -16, -12, -8, -4, 0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40],
+        'colors': [
+            '#013a10', '#005822', '#1b7b3b', '#399a53', '#61b266',
+            '#7fc589', '#9ccaa3', '#bcd8c2', '#daf0db', '#ffffff',
+            '#fedcd0', '#fdc4b0', '#f7a688', '#fa8267', '#ee603c',
+            '#d92d1f', '#b90b0c', '#8b0b0c', '#5f0004'
+        ]
+    },
+    'Zdr': {
+        'ranges': [-4, -3.5, -3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4],
+        'colors': [
+            '#212892', '#105380', '#1CBEFE', '#2FE1FF', '#72FEFB',
+            '#74FF88', '#7CB846', '#008601', '#FFE202', '#E0BF4C',
+            '#D49802', '#FEA8A7', '#E6594F', '#F81600', '#B90B0A',
+            '#BE96AE', '#7F586A'
+        ]
+    },
+    'Fdp': {
+        'ranges': [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90],
+        'colors': [
+            '#F665E6', '#FC90C2', '#FBB59C', '#FCD472', '#F2ED3B',
+            '#D0E818', '#A6D912', '#7ACB0D', '#48B90F', '#35A43B',
+            '#448A72', '#3B6FA1', '#2A4EC8', '#2827E4', '#591EF2',
+            '#8535FA', '#AE40FB', '#DB48F9'
+        ]
+    },
+    'roHV': {
+        'ranges': [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0],
+        'colors': [
+            '#441C02', '#833B00', '#C15700', '#FF8001', '#FFC0C0',
+            '#70FFFF', '#01D8DB', '#00CB00', '#01E900', '#AAFE50',
+            '#CBFE97', '#FFFE80'
+        ]
+    },
+    'Sg': {
+        'ranges': [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        'colors': [
+            '#E3F7F8', '#CBF8F3', '#9AECEA', '#81DE6C',
+            '#F8F649', '#FDCE20', '#F9942A', '#F84E2D', '#E7294D', '#AE1D94'
+        ]
+    },
+    'Sv': {
+        'ranges': [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        'colors': [
+            '#E3F7F8', '#CBF8F3', '#9AECEA', '#81DE6C',
+            '#F8F649', '#FDCE20', '#F9942A', '#F84E2D', '#E7294D', '#AE1D94'
+        ]
+    },
+    'Tb': {
+        'ranges': [0, 0.33, 0.66, 1.0],
+        'colors': ['#E6E6E6', '#FDCD00', '#FF3300', '#CC0003']
+    },
+    'DPmap': {
+        'ranges': [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90],
+        'colors': [
+            '#9FA9B2', '#A3C6FF', '#45FF92', '#01C15A', '#009800', '#FFFF81',
+            '#4088FE', '#0038FF', '#000074', '#FFAB7F', '#FF557F', '#FF0101',
+            '#CA6702', '#894401', '#610000', '#FFAAFF', '#FF54FF', '#C600C7', '#43405D'
+        ]
+    },
+    'Hngo': {
+        'ranges': [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36],
+        'colors': [
+            '#EAF4FE', '#CFE7FF', '#B9DBFE', '#9CCFFE', '#56ABFE', '#027FFF',
+            '#006ADA', '#005FBD', '#0052A2', '#024289', '#027500', '#00AB01',
+            '#25FF25', '#FFFF01', '#FF9899', '#FE0000', '#A60000', '#710100'
+        ]
+    },
+    'Hvgo': {
+        'ranges': [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36],
+        'colors': [
+            '#07FEA5', '#1BF36C', '#1FBD82', '#229470', '#257164', '#164137',
+            '#01CCEA', '#0287E4', '#0136D0', '#05176D', '#D3B51F', '#DA491A',
+            '#D91A12', '#84050C', '#43A804', '#033F03', '#A31047', '#DB2F9D'
+        ]
+    },
+    'VIL': {
+        'ranges': [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36],
+        'colors': [
+            '#DCEFFD', '#B1DAFA', '#88C4FF', '#4AA5FE', '#95FDFE', '#4BFFFF',
+            '#01D8DA', '#00CB00', '#02EA00', '#A7FF50', '#CBFF98', '#FFFF81',
+            '#FF9B8C', '#FF3F40', '#FA6AE3', '#C400C4', '#A60000', '#720000'
+        ]
+    },
+    'R': {
+        'ranges': [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+        'colors': [
+            '#9B9B9B', '#868887', '#0055FE', '#010080', '#FFFF00', '#C9EF04',
+            '#FDAB00', '#FF5600', '#FE0000', '#81FF7F', '#02A901', '#FE83F5', '#D000D0'
+        ]
+    },
+    'Qp3': {
+        'ranges': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+        'colors': [
+            '#FFAAFF', '#D0E9FF', '#00AAFF', '#004CFE', '#0000C5', '#00007E',
+            '#FEFF01', '#FF7F02', '#E5490C', '#FD0100', '#01BE00', '#007500', '#FF00FF', '#CC009D'
+        ]
+    },
+    'Qp6': {
+        'ranges': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+        'colors': [
+            '#FFAAFF', '#D0E9FF', '#00AAFF', '#004CFE', '#0000C5', '#00007E',
+            '#FEFF01', '#FF7F02', '#E5490C', '#FD0100', '#01BE00', '#007500', '#FF00FF', '#CC009D'
+        ]
+    },
+    'Qp12': {
+        'ranges': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+        'colors': [
+            '#FFAAFF', '#D0E9FF', '#00AAFF', '#004CFE', '#0000C5', '#00007E',
+            '#FEFF01', '#FF7F02', '#E5490C', '#FD0100', '#01BE00', '#007500', '#FF00FF', '#CC009D'
+        ]
+    },
+    'Qp24': {
+        'ranges': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+        'colors': [
+            '#FFAAFF', '#D0E9FF', '#00AAFF', '#004CFE', '#0000C5', '#00007E',
+            '#FEFF01', '#FF7F02', '#E5490C', '#FD0100', '#01BE00', '#007500', '#FF00FF', '#CC009D'
+        ]
+    }
 }
 
-# custom_cmap = LinearSegmentedColormap.from_list("custom_gradient", custom_colors_ZH)
+
+def get_color_for_value(variable: str, value: float) -> str:
+    """
+    Returns the appropriate color for a given value and variable type.
+    """
+    if variable not in color_ranges:
+        return '#000000'  # Default black color for unknown variables
+
+    ranges = color_ranges[variable]['ranges']
+    colors = color_ranges[variable]['colors']
+
+    # Handle NaN values
+    if np.isnan(value):
+        return '#000000'
+
+    # Find the appropriate color range
+    for i in range(len(ranges) - 1):
+        if ranges[i] <= value < ranges[i + 1]:
+            return colors[i]
+
+    # Handle values outside the range
+    if value < ranges[0]:
+        return colors[0]
+    return colors[-1]
 
 
 def get_custom_cmap(variable: str = ""):
-    return LinearSegmentedColormap.from_list("custom_gradient", custom_colors_map[variable])
+    """
+    Creates a colormap based on the variable type and its value ranges.
+    """
+    if variable not in color_ranges:
+        return LinearSegmentedColormap.from_list("custom_gradient", ['#000000'])
+
+    ranges = color_ranges[variable]['ranges']
+    colors = color_ranges[variable]['colors']
+
+    # Create a colormap with the specified colors
+    return LinearSegmentedColormap.from_list("custom_gradient", colors)
 
 
 def add_overviews(image_path):
@@ -597,21 +683,24 @@ def get_cached_figure():
 
 def render_tile(data, variable):
     """
-    📌 Рендерит тайл (256x256) с интерполированными значениями.
+    Renders a tile with colors based on value ranges.
     """
     try:
+        # Create a normalized colormap
         norm = Normalize(vmin=np.nanmin(data), vmax=np.nanmax(data))
 
-        # Используем кэшированную фигуру
+        # Use cached figure
         fig, ax = get_cached_figure()
 
-        # Очищаем предыдущие данные
+        # Clear previous data
         ax.clear()
         ax.axis("off")
 
-        # Рендерим новые данные
-        ax.imshow(data, cmap=get_custom_cmap(
-            variable), norm=norm, origin="upper")
+        # Get the colormap for the variable
+        cmap = get_custom_cmap(variable)
+
+        # Render the image using the colormap
+        im = ax.imshow(data, cmap=cmap, norm=norm, origin="upper")
 
         buf = BytesIO()
         plt.savefig(buf, format="png", bbox_inches="tight",
@@ -647,39 +736,6 @@ async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float
         tile_buf = render_tile(data2, variable)
 
         return StreamingResponse(tile_buf, media_type="image/png")
-    except Exception as e:
-        print(e)
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-
-
-@app.get("/plot")
-async def get_plot(variable: str, locator_code: str = "", lat=0, lon=0, timestamp: str = Query(..., description="Timestamp in ISO format"), base_path: str = "path/to/your/folder", slice_index: int = 1):
-    try:
-        time_data = parse_folder_structure('./periods')
-        # print(time_data)
-        location_list = get_file_path(time_data, timestamp, True)
-
-        zip_location = get_loc_file(location_list, locator_code)
-        file_location = extract_nc_file(zip_location)
-        ds = Dataset(file_location, mode="r")
-
-        print(os.environ.get("TCL_LIBRARY"))
-        print(os.environ.get("TK_LIBRARY"))
-
-        if variable not in ds.variables:
-            return JSONResponse(content={"error": "Variable not found"}, status_code=400)
-
-        data_array = ds.variables[variable]
-        # shape = data_array.shape
-
-        # Generate the plot
-        output_file = plot_data_on_map_custom_json_by_color(
-            data_array, float(lat), float(lon), variable, slice_index=slice_index)
-        ds.close()
-        # print(output_file)
-        # generate_tiles_from_image(output_file, TILES_DIR, center_lat=lat, center_lon=lon)
-
-        return JSONResponse(content=output_file, status_code=200)
     except Exception as e:
         print(e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
