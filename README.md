@@ -31,18 +31,9 @@
    ```
 
 2. **Запуск сервера:**
-   - Для Windows:
-     ```bash
-     start.bat
-     ```
-   - Для Linux/Mac:
-     ```bash
-     ./start.sh
-     ```
-   - Или вручную:
-     ```bash
-     python main.py
-     ```
+   ```bash
+   fastapi dev main.py
+   ```
 
 ### Сборка и запуск клиента (папка client)
 
@@ -96,21 +87,21 @@
 
 ### Порядок запуска
 
-1. **Запуск Backend:**
-
-   ```bash
-   cd api
-   python main.py
-   ```
-
-   Backend должен быть запущен на порту 8000
-
-2. **Сборка клиента:**
+1. **Сборка клиента:**
 
    ```bash
    cd client
    npm run build
    ```
+
+2. **Запуск Backend:**
+
+   ```bash
+   cd api
+   fastapi dev main.py
+   ```
+
+   Backend должен быть запущен на порту 8000
 
 3. **Запуск Apache:**
    - Windows:
