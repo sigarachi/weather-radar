@@ -10,3 +10,6 @@ environs
 shapely
 fastapi[standard]
 dask[complete]
+folium
+mercantile
+scipy
