@@ -621,7 +621,7 @@ def get_tile_data(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_i
         # Векторизованное преобразование координат в индексы сетки
         nx = np.clip(np.floor((lons[in_radius] - center_lon) * KM_PER_DEGREE_LON(
             center_lat) / (2 * GRID_RADIUS_KM / nx_max) + nx_max // 2), 0, nx_max - 1).astype(int)
-        ny = np.clip(np.floor((center_lat - lats[in_radius]) * KM_PER_DEGREE_LAT / (
+        ny = np.clip(np.floor((lats[in_radius] - center_lat) * KM_PER_DEGREE_LAT / (
             2 * GRID_RADIUS_KM / ny_max) + ny_max // 2), 0, ny_max - 1).astype(int)
 
         # Формируем тайл
