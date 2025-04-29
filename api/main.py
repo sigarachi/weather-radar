@@ -533,7 +533,6 @@ def from_pixel_to_lonlat(xp, yp, zoom):
 
 
 def find_closest_node(nx, ny, data):
-    print(data[ny, nx])
     """
     📌 Ищет ближайшую доступную точку в сетке (`nx, ny`).
     """
@@ -558,43 +557,33 @@ def find_closest_node(nx, ny, data):
     return closest_val
 
 
-def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_index=0, locator_code=""):
+def get_tile_data(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_index=0):
     """
     📌 Генерирует данные для запрашиваемого тайла.
     """
     try:
-        # Сначала проверяем расстояние от центра тайла до центра данных
-        tile_center_x = (x + 0.5) * TILE_SIZE
-        tile_center_y = (y + 0.5) * TILE_SIZE
-        tile_center_lon, tile_center_lat = from_pixel_to_lonlat(
-            tile_center_x, tile_center_y, zoom)
+        ds = xr.open_dataset(nc_file)
+        if variable not in ds.variables:
+            raise HTTPException(
+                status_code=400, detail=f"Переменная {variable} не найдена")
 
-        # Проверяем расстояние от центра тайла до центра данных
-        center_distance = haversine(
-            tile_center_lat, tile_center_lon, center_lat, center_lon)
+        # 📌 Определяем реальную размерность сетки
+        dims = ds.dims
+        if "time" in dims:
+            time_dim = dims["time"]
+        else:
+            time_dim = 1  # Если нет временного измерения, считаем, что оно одно
 
-        # Если центр тайла находится за пределами радиуса + половина диагонали тайла,
-        # то весь тайл точно вне радиуса
-        tile_diagonal_km = haversine(tile_center_lat, tile_center_lon,
-                                     *from_pixel_to_lonlat(tile_center_x + TILE_SIZE/2,
-                                                           tile_center_y + TILE_SIZE/2, zoom))
+        ny_max, nx_max = dims.get("ny", 0), dims.get(
+            "nx", 0)  # Размеры сетки (ny, nx)
 
-        if center_distance > (GRID_RADIUS_KM + tile_diagonal_km):
-            print(
-                f"Тайл полностью вне радиуса 250 км (расстояние: {center_distance:.2f} км)")
-            return None
+        if nx_max == 0 or ny_max == 0:
+            raise HTTPException(
+                status_code=500, detail="Не удалось определить размеры сетки")
 
-        # Используем кэшированные датасеты
-        ds_data = get_cached_dataset(nc_file)
-        ds_grid = get_cached_dataset(f"grid_coordinates{locator_code}.nc")
+        # 📌 Извлекаем массив данных, как в примере
+        data_array = ds[variable].values
 
-        # Проверяем наличие переменной
-        if variable not in ds_data.variables:
-            raise ValueError(
-                f"Переменная {variable} не найдена в файле данных")
-
-        # Загружаем данные
-        data_array = ds_data[variable].values
         if data_array.ndim == 3:
             if slice_index >= data_array.shape[0]:
                 print(
@@ -605,16 +594,9 @@ def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, sli
             data = data_array[:, :]
 
         data = np.squeeze(data)  # Убираем лишние размерности
+        lat_size, lon_size = data.shape
 
-        # Загружаем предварительно вычисленные данные
-        mask = ds_grid['valid_mask'][:]
-        valid_indices = ds_grid['valid_indices'][:]
-        kdtree_data = ds_grid['kdtree_data'][:]
-
-        # Создаем новое KD-дерево
-        kdtree = cKDTree(kdtree_data)
-
-        # Вычисляем границы тайла
+        # 📌 Определяем границы тайла
         x1, y1 = x * TILE_SIZE, y * TILE_SIZE
         x2, y2 = x1 + TILE_SIZE, y1 + TILE_SIZE
 
@@ -633,40 +615,33 @@ def get_tile_data_new(nc_file, variable, x, y, zoom, center_lat, center_lon, sli
 
         if not np.any(in_radius):
             print("Тайл полностью вне радиуса 250 км")
+            ds.close()
             return None
 
-        # Создаем массив запросов только для точек в радиусе
-        query_points = np.column_stack([lons[in_radius], lats[in_radius]])
-
-        # Находим ближайшие точки в сетке только для точек в радиусе
-        distances, indices = kdtree.query(query_points)
-
-        # Проверяем границы индексов
-        indices = np.clip(indices, 0, len(valid_indices) - 1)
-        grid_indices = valid_indices[indices]
-
-        # Преобразуем индексы
-        ny, nx = mask.shape
-        y_idx = np.clip(grid_indices // nx, 0, ny - 1)
-        x_idx = np.clip(grid_indices % nx, 0, nx - 1)
+        # Векторизованное преобразование координат в индексы сетки
+        nx = np.clip(np.floor((lons[in_radius] - center_lon) * KM_PER_DEGREE_LON(
+            center_lat) / (2 * GRID_RADIUS_KM / nx_max) + nx_max // 2), 0, nx_max - 1).astype(int)
+        ny = np.clip(np.floor((center_lat - lats[in_radius]) * KM_PER_DEGREE_LAT / (
+            2 * GRID_RADIUS_KM / ny_max) + ny_max // 2), 0, ny_max - 1).astype(int)
 
         # Формируем тайл
         tile_data = np.full((TILE_SIZE, TILE_SIZE), np.nan)
 
-        # Заполняем только валидные точки
-        valid_mask = (y_idx < ny) & (x_idx < nx) & (mask[y_idx, x_idx] == 1)
-        if np.any(valid_mask):
-            # Создаем маску для исходного тайла
-            tile_mask = np.zeros((TILE_SIZE, TILE_SIZE), dtype=bool)
-            tile_mask.ravel()[in_radius] = valid_mask
+        # Создаем маску для исходного тайла
+        tile_mask = np.zeros((TILE_SIZE, TILE_SIZE), dtype=bool)
+        tile_mask.ravel()[in_radius] = True
 
-            # Заполняем только валидные точки в радиусе
-            tile_data[tile_mask] = data[y_idx[valid_mask], x_idx[valid_mask]]
+        # Заполняем только валидные точки в радиусе
+        valid_points = (ny >= 0) & (ny < ny_max) & (nx >= 0) & (nx < nx_max)
+        if np.any(valid_points):
+            # Векторизованное получение значений из data
+            tile_data[tile_mask] = data[ny[valid_points], nx[valid_points]]
 
+        ds.close()
         return tile_data
 
     except Exception as e:
-        raise ValueError(f"Ошибка при обработке тайла: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Add figure caching
@@ -686,8 +661,15 @@ def render_tile(data, variable):
     Renders a tile with colors based on value ranges.
     """
     try:
-        # Create a normalized colormap
-        norm = Normalize(vmin=np.nanmin(data), vmax=np.nanmax(data))
+        # Get fixed value ranges for the variable
+        if variable in color_ranges:
+            ranges = color_ranges[variable]['ranges']
+            vmin, vmax = ranges[0], ranges[-1]
+        else:
+            vmin, vmax = np.nanmin(data), np.nanmax(data)
+
+        # Create a normalized colormap with fixed ranges
+        norm = Normalize(vmin=vmin, vmax=vmax)
 
         # Use cached figure
         fig, ax = get_cached_figure()
@@ -726,8 +708,8 @@ async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float
         zip_location = get_loc_file(location_list, locator_code)
         file_location = extract_nc_file(zip_location)
 
-        data2 = get_tile_data_new(
-            file_location, variable, x, y, z, lat, lon, slice_index, locator_code)
+        data2 = get_tile_data(
+            file_location, variable, x, y, z, lat, lon, slice_index)
 
         if np.isnan(data2).all():
             raise HTTPException(
