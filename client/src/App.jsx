@@ -47,7 +47,7 @@ const App = () => {
   ] : [], [periods]);
 
 
-  const handlePeriodChange = useCallback(async () => {
+  const handlePeriodChange = useCallback(async (selectedDate) => {
     if (!selectedDate) return;
 
     
@@ -78,7 +78,7 @@ const App = () => {
     } else {
       console.error('Failed to fetch periods');
     }
-  }, [selectedDate, periods]);
+  }, [periods]);
 
   // Add useEffect to handle tile updates
   useEffect(() => {
@@ -124,10 +124,12 @@ const App = () => {
                               dateFormat="dd/MM/YYYY HH:mm"  
                               locale="ru" 
                               showTimeSelect 
-                              timeIntervals={10} 
-                              onChange={(e) => {
-                                  setSelectedDate(e);
-                                  handlePeriodChange()
+                              timeIntervals={10}
+                              timeFormat="HH:mm"
+                              onChange={(date) => {
+                                  setSelectedDate(date);
+                                  // Only trigger handlePeriodChange if both date and time are selected
+                                  handlePeriodChange(date)
                               }}
                           />
                       </>
