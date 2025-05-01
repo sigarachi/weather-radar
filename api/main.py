@@ -552,12 +552,91 @@ def find_closest_node(nx, ny, data):
     return closest_val
 
 
+# Add dataset caching with size limit
+dataset_cache = {}
+MAX_CACHED_DATASETS = 5  # Maximum number of datasets to keep in cache
+
+
+def get_cached_dataset(file_path):
+    if file_path not in dataset_cache:
+        if len(dataset_cache) >= MAX_CACHED_DATASETS:
+            # Remove the oldest dataset
+            oldest_key = next(iter(dataset_cache))
+            dataset_cache[oldest_key].close()
+            del dataset_cache[oldest_key]
+        dataset_cache[file_path] = xr.open_dataset(file_path)
+    return dataset_cache[file_path]
+
+
+def clear_dataset_cache():
+    for ds in dataset_cache.values():
+        ds.close()
+    dataset_cache.clear()
+
+
+# Add figure caching with cleanup
+figure_cache = {}
+
+
+def get_cached_figure():
+    if 'fig' not in figure_cache:
+        figure_cache['fig'] = plt.figure(figsize=(1, 1), dpi=TILE_SIZE)
+        figure_cache['ax'] = figure_cache['fig'].add_subplot(111)
+        figure_cache['ax'].axis("off")
+    return figure_cache['fig'], figure_cache['ax']
+
+
+def clear_figure_cache():
+    if 'fig' in figure_cache:
+        plt.close(figure_cache['fig'])
+        figure_cache.clear()
+
+
+def render_tile(data, variable):
+    """
+    Renders a tile with colors based on value ranges.
+    """
+    try:
+        # Get fixed value ranges for the variable
+        if variable in color_ranges:
+            ranges = color_ranges[variable]['ranges']
+            vmin, vmax = ranges[0], ranges[-1]
+        else:
+            vmin, vmax = np.nanmin(data), np.nanmax(data)
+
+        # Create a normalized colormap with fixed ranges
+        norm = Normalize(vmin=vmin, vmax=vmax)
+
+        # Use cached figure
+        fig, ax = get_cached_figure()
+
+        # Clear previous data
+        ax.clear()
+        ax.axis("off")
+
+        # Get the colormap for the variable
+        cmap = get_custom_cmap(variable)
+
+        # Render the image using the colormap
+        im = ax.imshow(data, cmap=cmap, norm=norm, origin="upper")
+
+        buf = BytesIO()
+        plt.savefig(buf, format="png", bbox_inches="tight",
+                    pad_inches=0, transparent=True)
+        buf.seek(0)
+
+        return buf
+    except Exception as e:
+        print(f"Error rendering tile: {e}")
+        return None
+
+
 def get_tile_data(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_index=0):
     """
     📌 Генерирует данные для запрашиваемого тайла.
     """
     try:
-        ds = xr.open_dataset(nc_file)
+        ds = get_cached_dataset(nc_file)
         if variable not in ds.variables:
             raise HTTPException(
                 status_code=400, detail=f"Переменная {variable} не найдена")
@@ -610,7 +689,6 @@ def get_tile_data(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_i
 
         if not np.any(in_radius):
             print("Тайл полностью вне радиуса 250 км")
-            ds.close()
             return None
 
         # Векторизованное преобразование координат в индексы сетки
@@ -632,65 +710,14 @@ def get_tile_data(nc_file, variable, x, y, zoom, center_lat, center_lon, slice_i
             # Векторизованное получение значений из data
             tile_data[tile_mask] = data[ny[valid_points], nx[valid_points]]
 
-        ds.close()
         return tile_data
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# Add figure caching
-figure_cache = {}
-
-
-def get_cached_figure():
-    if 'fig' not in figure_cache:
-        figure_cache['fig'] = plt.figure(figsize=(1, 1), dpi=TILE_SIZE)
-        figure_cache['ax'] = figure_cache['fig'].add_subplot(111)
-        figure_cache['ax'].axis("off")
-    return figure_cache['fig'], figure_cache['ax']
-
-
-def render_tile(data, variable):
-    """
-    Renders a tile with colors based on value ranges.
-    """
-    try:
-        # Get fixed value ranges for the variable
-        if variable in color_ranges:
-            ranges = color_ranges[variable]['ranges']
-            vmin, vmax = ranges[0], ranges[-1]
-        else:
-            vmin, vmax = np.nanmin(data), np.nanmax(data)
-
-        # Create a normalized colormap with fixed ranges
-        norm = Normalize(vmin=vmin, vmax=vmax)
-
-        # Use cached figure
-        fig, ax = get_cached_figure()
-
-        # Clear previous data
-        ax.clear()
-        ax.axis("off")
-
-        # Get the colormap for the variable
-        cmap = get_custom_cmap(variable)
-
-        # Render the image using the colormap
-        im = ax.imshow(data, cmap=cmap, norm=norm, origin="upper")
-
-        buf = BytesIO()
-        plt.savefig(buf, format="png", bbox_inches="tight",
-                    pad_inches=0, transparent=True)
-        buf.seek(0)
-
-        return buf
-    except Exception as e:
-        print(f"Error rendering tile: {e}")
-        return None
-
-
 # API эндпоинт для тайлов
+
+
 @app.get("/tiles/{z}/{x}/{y}")
 async def get_tile(variable: str, z: int, x: int, y: int, lon: float, lat: float, locator_code: str, slice_index: int, timestamp: str = Query(..., description="Timestamp in ISO format")):
     """Обрабатывает запрос на тайл, создавая его динамически, если он входит в 250 км от центра."""
@@ -758,21 +785,6 @@ async def get_variables(locator_code: str = "RUDL", timestamp: str = Query(..., 
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-# Add dataset caching
-dataset_cache = {}
-
-
-def get_cached_dataset(file_path):
-    if file_path not in dataset_cache:
-        dataset_cache[file_path] = xr.open_dataset(file_path)
-    return dataset_cache[file_path]
-
-
-def clear_dataset_cache():
-    for ds in dataset_cache.values():
-        ds.close()
-    dataset_cache.clear()
-
-
 # Add periodic cache clearing
 atexit.register(clear_dataset_cache)
+atexit.register(clear_figure_cache)
