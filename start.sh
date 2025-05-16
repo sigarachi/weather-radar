@@ -38,7 +38,7 @@ fi
 
 # Start new screen session with FastAPI
 echo "Запуск FastAPI в сессии screen..."
-screen -dmS weather_api bash -c "cd api && uvicorn main:app --reload"
+screen -dmS weather_api bash -c "cd api && fastapi dev main.py"
 
 echo "Развертывание завершено! Сессия screen 'weather_api' запущена."
 echo "Для присоединения к сессии screen используйте: screen -r weather_api"
