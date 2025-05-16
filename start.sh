@@ -8,6 +8,11 @@ if [ -z "$LATEST_RELEASE_URL" ]; then
     exit 1
 fi
 
+if [ ! -d "unzip" ]; then
+    echo "Установка unzip..."
+    sudo apt-get install unzip
+fi
+
 # Download and extract the latest release
 echo "Загрузка и распаковка последнего релиза..."
 curl -L "$LATEST_RELEASE_URL" -o latest_release.zip
