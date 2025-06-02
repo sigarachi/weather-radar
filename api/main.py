@@ -600,12 +600,9 @@ def render_tile(data, variable):
         # Get fixed value ranges for the variable
         if variable in color_ranges:
             ranges = color_ranges[variable]['ranges']
-            vmin, vmax = ranges[0], ranges[-1]
+            colors = color_ranges[variable]['colors']
         else:
-            vmin, vmax = np.nanmin(data), np.nanmax(data)
-
-        # Create a normalized colormap with fixed ranges
-        norm = Normalize(vmin=vmin, vmax=vmax)
+            return None
 
         # Use cached figure
         fig, ax = get_cached_figure()
@@ -614,10 +611,16 @@ def render_tile(data, variable):
         ax.clear()
         ax.axis("off")
 
-        # Get the colormap for the variable
-        cmap = get_custom_cmap(variable)
+        # Create a discrete colormap
+        cmap = plt.cm.colors.ListedColormap(colors)
 
-        # Render the image using the colormap
+        # Create boundaries for the colormap
+        bounds = ranges
+
+        # Create a normalization object that maps values to discrete colors
+        norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
+
+        # Render the image using the discrete colormap
         im = ax.imshow(data, cmap=cmap, norm=norm, origin="upper")
 
         buf = BytesIO()
