@@ -10,7 +10,7 @@ import { MapContainer, TileLayer } from 'react-leaflet';
 import "leaflet/dist/leaflet.css";
 import "react-datepicker/dist/react-datepicker.css";
 import ru from 'date-fns/locale/ru'
-import Legend from './Legend';
+import Legend from './components/legend';
 
 registerLocale('ru', ru)
 
@@ -186,7 +186,7 @@ const App = () => {
           >
               <TileLayer 
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution='&copy; OpenStreetMap contributors'
+                  
                   
               />
               {tileLoading && <div className='map-loading-overlay'><div className="spinner"></div></div>}

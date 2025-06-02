@@ -7,7 +7,7 @@ const Legend = ({ colorRange, variable }) => {
 
   return (
     <div className="legend-bar">
-      <div style={{ display: 'flex', alignItems: 'center' }}>
+      <div className='flex'>
         {colors.map((color, idx) => (
           <div
             key={idx}
@@ -27,7 +27,7 @@ const Legend = ({ colorRange, variable }) => {
           <span key={idx} style={{ width: 30, textAlign: 'end' }}>{r}</span>
         ))}
       </div>
-      <div style={{ textAlign: 'left', fontSize: 14, marginTop: 4 }}>
+      <div style={{ textAlign: 'center', fontSize: 14, marginTop: 4 }}>
         {variable}
       </div>
     </div>
