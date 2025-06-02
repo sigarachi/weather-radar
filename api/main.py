@@ -785,6 +785,12 @@ async def get_variables(locator_code: str = "RUDL", timestamp: str = Query(..., 
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+
+@app.get("/color_ranges")
+def get_color_ranges():
+    return JSONResponse(content=color_ranges, status_code=200)
+
+
 # Add periodic cache clearing
 atexit.register(clear_dataset_cache)
 atexit.register(clear_figure_cache)

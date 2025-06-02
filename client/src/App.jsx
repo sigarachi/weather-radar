@@ -4,12 +4,13 @@ import 'leaflet/dist/leaflet.css';
 import './App.css'
 import { ORIGIN } from './globals';
 import { usePeriods } from './hooks/use-periods';
-import { IMAGE_MAP, LOCATOR_MAP, VARIABLE_MAP } from './constants';
+import { LOCATOR_MAP, VARIABLE_MAP, colorRanges } from './constants';
 import DatePicker, {registerLocale} from 'react-datepicker'
 import { MapContainer, TileLayer } from 'react-leaflet';
 import "leaflet/dist/leaflet.css";
 import "react-datepicker/dist/react-datepicker.css";
 import ru from 'date-fns/locale/ru'
+import Legend from './Legend';
 
 registerLocale('ru', ru)
 
@@ -24,8 +25,9 @@ const App = () => {
   const [locatorOptions, setLocatorOptions] = useState([]);
   const [locator, setLocator] = useState('');
   const [sliceIndex, setSliceIndex] = useState(1);
+  const [tileLoading, setTileLoading] = useState(false);
+  const [periodError, setPeriodError] = useState(false);
 
-  //const [shapes, setShapes] = useState([]);
 
   const locatorCords = useMemo(() => {
     return LOCATOR_MAP.filter((el) => el.code === locator)[0]?.cords ?? {lat: 0, lng: 0}
@@ -34,7 +36,6 @@ const App = () => {
   const showSlice = useMemo(() => Boolean(selectedVariable === 'Zh' || selectedVariable === 'Zv'), [selectedVariable])
 
   const {periods, isLoading} = usePeriods();
-  //const { data } = useVariable(selectedVariable, locator, locatorCords, selectedPeriod[0], sliceIndex);
 
   const handleVariableChange = async (event) => {
       const variable = event.target.value;
@@ -49,6 +50,7 @@ const App = () => {
 
   const handlePeriodChange = useCallback(async (selectedDate) => {
     if (!selectedDate) return;
+    setPeriodError(false);
 
     
 
@@ -59,7 +61,10 @@ const App = () => {
       return periodDate.getTime() === selectedDateObj.getTime();
     });
 
-    if (!variable) return;
+    if (!variable) {
+      setPeriodError(true);
+      return;
+    }
 
     setSelectedPeriod(variable);
 
@@ -67,6 +72,7 @@ const App = () => {
       timestamp: variable[0],
       base_path: variable[1]
     });
+    
 
     const response = await fetch(`${ORIGIN}/list_files?${queryParams}`);
     if (response.ok) {
@@ -80,10 +86,8 @@ const App = () => {
     }
   }, [periods]);
 
-  // Add useEffect to handle tile updates
   useEffect(() => {
     if (selectedVariable && selectedPeriod && locator) {
-      // This will trigger a re-render of the TileLayer when selectedPeriod changes
       console.log('Updating tiles for period:', selectedPeriod[0]);
     }
   }, [selectedVariable, selectedPeriod, locator, sliceIndex]);
@@ -117,7 +121,7 @@ const App = () => {
                   {Boolean(!isLoading && periods.length && dateLimits.length) && (
                       <>
                           <label>Выберите дату и время</label>
-                          <DatePicker 
+                          <DatePicker
                               value={selectedDate} 
                               selected={selectedDate} 
                               includeDates={dateLimits} 
@@ -125,16 +129,21 @@ const App = () => {
                               locale="ru" 
                               showTimeSelect 
                               timeIntervals={10}
-                              timeFormat="HH:mm"
-                              onChange={(date) => {
-                                  setSelectedDate(date);
-                                  // Only trigger handlePeriodChange if both date and time are selected
-                                  handlePeriodChange(date)
-                              }}
+                            onChange={(date) => {
+                                setSelectedDate(date);
+                                
+                                handlePeriodChange(date);
+                            }}
                           />
                       </>
                   )}
               </div>
+              {periodError && (
+                <div className='control-group'>
+                  <label>Ошибка</label>
+                  <p>Не удалось найти данные для выбранной даты и времени</p>
+                </div>
+              )}
               {locatorOptions.length > 0 && (
                   <div className='control-group'>
                       <label>Выберите локатор</label>
@@ -178,11 +187,17 @@ const App = () => {
               <TileLayer 
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   attribution='&copy; OpenStreetMap contributors'
+                  
               />
+              {tileLoading && <div className='map-loading-overlay'><div className="spinner"></div></div>}
               {selectedVariable && selectedPeriod && (
                   <TileLayer 
                       key={`${selectedVariable}-${selectedPeriod[0]}-${sliceIndex}`}
                       opacity={0.6} 
+                      eventHandlers={{
+                        loading: () => setTileLoading(true),
+                        load: () => setTileLoading(false)
+                      }}
                       url={`${ORIGIN}/tiles/{z}/{x}/{y}?${new URLSearchParams({
                           variable: selectedVariable,
                           locator_code: locator,
@@ -194,9 +209,9 @@ const App = () => {
                   />
               )}
           </MapContainer>
-          {selectedVariable && 
+          {selectedVariable && colorRanges[selectedVariable] &&
               <div className='legend-overlay'>
-                  <img src={`/img/variables/${IMAGE_MAP[selectedVariable]}`} alt="Легенда" />
+                  <Legend colorRange={colorRanges[selectedVariable]} variable={selectedVariable} />
               </div>
           }
       </div>
