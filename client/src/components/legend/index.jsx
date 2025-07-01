@@ -1,13 +1,20 @@
 import PropTypes from 'prop-types';
-
+import { DPmap_CODES } from '../../constants';
 
 const Legend = ({ colorRange, variable }) => {
   if (!colorRange) return null;
   const { ranges, colors } = colorRange;
 
+  const formatValue = (value) => {
+    if (variable === 'DPmap') {
+      return `${value}: ${DPmap_CODES[value] || 'Неизвестное явление'}`;
+    }
+    return value;
+  };
+
   return (
     <div className="legend-bar">
-      <div className='flex'>
+      <div className='flex legend-bar-colors'>
         {colors.map((color, idx) => (
           <div
             key={idx}
@@ -16,18 +23,36 @@ const Legend = ({ colorRange, variable }) => {
               width: 30,
               height: 20,
               border: '1px solid #333',
-              boxSizing: 'border-box'
+              boxSizing: 'border-box',
+              position: 'relative'
             }}
-            title={`${ranges[idx]}${ranges[idx + 1] !== undefined ? ' – ' + ranges[idx + 1] : '+'}`}
           />
         ))}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        fontSize: 12,
+        position: 'relative',
+        marginTop: 4,
+        height: 20
+      }}>
         {ranges.map((r, idx) => (
-          <span key={idx} style={{ width: 30, textAlign: 'end' }}>{r}</span>
+          <div 
+            key={idx} 
+            style={{ 
+              position: 'absolute',
+              left: `${(idx * 30)}px`,
+              width: 30,
+              textAlign: 'center',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {formatValue(r)}
+          </div>
         ))}
       </div>
-      <div style={{ textAlign: 'center', fontSize: 14, marginTop: 4 }}>
+      <div style={{ textAlign: 'center', fontSize: 14, marginTop: 20 }}>
         {variable}
       </div>
     </div>

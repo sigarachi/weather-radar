@@ -129,11 +129,10 @@ const App = () => {
                               locale="ru" 
                               showTimeSelect 
                               timeIntervals={10}
-                            onChange={(date) => {
-                                setSelectedDate(date);
-                                
-                                handlePeriodChange(date);
-                            }}
+                              onChange={(date) => {
+                                  setSelectedDate(date);
+                                  handlePeriodChange(date);
+                              }}
                           />
                       </>
                   )}

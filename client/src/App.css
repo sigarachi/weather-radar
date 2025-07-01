@@ -156,3 +156,10 @@ body, #root {
   margin: 8px 0;
   display: inline-block;
 }
+
+.legend-bar-colors {
+  display: flex;
+  flex-direction: row;
+  padding: 0 10px;
+}
+
