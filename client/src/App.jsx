@@ -8,6 +8,7 @@ import { LOCATOR_MAP, VARIABLE_MAP, colorRanges } from './constants';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import { ToastContainer, toast } from 'react-toastify';
 import 'react-datepicker/dist/react-datepicker.css';
 import ru from 'date-fns/locale/ru';
 import Legend from './components/legend';
@@ -25,7 +26,6 @@ const App = () => {
 	const [locator, setLocator] = useState('');
 	const [sliceIndex, setSliceIndex] = useState(1);
 	const [tileLoading, setTileLoading] = useState(false);
-	const [periodError, setPeriodError] = useState(false);
 
 	const locatorCords = useMemo(() => {
 		return (
@@ -60,7 +60,6 @@ const App = () => {
 	const handlePeriodChange = useCallback(
 		async (selectedDate) => {
 			if (!selectedDate) return;
-			setPeriodError(false);
 
 			const variable = periods.find((el) => {
 				const periodDate = new Date(el[0]);
@@ -70,7 +69,9 @@ const App = () => {
 			});
 
 			if (!variable) {
-				setPeriodError(true);
+				toast('Не удалось найти данные для выбранной даты и времени', {
+					type: 'error',
+				});
 				return;
 			}
 
@@ -126,6 +127,7 @@ const App = () => {
 
 	return (
 		<div className="page-wrapper">
+			<ToastContainer />
 			<div className="controls-overlay">
 				<h1>NetCDF Viewer</h1>
 				<div className="control-group">
@@ -135,7 +137,7 @@ const App = () => {
 							<DatePicker
 								value={selectedDate}
 								selected={selectedDate}
-								includeDates={dateLimits}
+								//includeDates={dateLimits}
 								dateFormat="dd/MM/YYYY HH:mm"
 								locale="ru"
 								showTimeSelect
@@ -148,12 +150,6 @@ const App = () => {
 						</>
 					)}
 				</div>
-				{periodError && (
-					<div className="control-group">
-						<label>Ошибка</label>
-						<p>Не удалось найти данные для выбранной даты и времени</p>
-					</div>
-				)}
 				{locatorOptions.length > 0 && (
 					<div className="control-group">
 						<label>Выберите локатор</label>
