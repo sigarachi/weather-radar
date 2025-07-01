@@ -5,16 +5,16 @@ import './App.css';
 import { ORIGIN } from './globals';
 import { usePeriods } from './hooks/use-periods';
 import { LOCATOR_MAP, VARIABLE_MAP, colorRanges } from './constants';
-import DatePicker, { registerLocale } from 'react-datepicker';
 import { MapContainer, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import { ru } from 'date-fns/locale/ru';
 import { ToastContainer, toast } from 'react-toastify';
-import 'react-datepicker/dist/react-datepicker.css';
-import ru from 'date-fns/locale/ru';
 import Legend from './components/legend';
-import { DPmap_CODES } from './constants';
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 
-registerLocale('ru', ru);
+//registerLocale('ru', ru);
 
 const App = () => {
 	const [variables, setVariables] = useState([]);
@@ -123,8 +123,6 @@ const App = () => {
 		}
 	};
 
-	console.log(Object.keys(DPmap_CODES));
-
 	return (
 		<div className="page-wrapper">
 			<ToastContainer />
@@ -134,19 +132,20 @@ const App = () => {
 					{Boolean(!isLoading && periods.length && dateLimits.length) && (
 						<>
 							<label>Выберите дату и время</label>
-							<DatePicker
-								value={selectedDate}
-								selected={selectedDate}
-								//includeDates={dateLimits}
-								dateFormat="dd/MM/YYYY HH:mm"
-								locale="ru"
-								showTimeSelect
-								timeIntervals={10}
-								onChange={(date) => {
-									setSelectedDate(date);
-									handlePeriodChange(date);
-								}}
-							/>
+							<LocalizationProvider
+								dateAdapter={AdapterDayjs}
+								adapterLocale={ru}>
+								<DateTimePicker
+									value={selectedDate}
+									views={['year', 'day', 'hours', 'minutes']}
+									format="DD/MM/YYYY HH:mm"
+									ampm={false}
+									onChange={(value) => {
+										setSelectedDate(value);
+										handlePeriodChange(value);
+									}}
+								/>
+							</LocalizationProvider>
 						</>
 					)}
 				</div>
