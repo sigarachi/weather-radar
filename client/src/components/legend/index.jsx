@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types';
-import { DPmap_CODES } from '../../constants';
+import { DPmap_CODES, VARIABLE_MAP } from '../../constants';
 
 const Legend = ({ colorRange, variable, locator, period }) => {
 	if (!colorRange) return null;
@@ -71,7 +71,7 @@ const Legend = ({ colorRange, variable, locator, period }) => {
 			</div>
 
 			<div style={{ textAlign: 'center', fontSize: 14, marginTop: 20 }}>
-				{[period, locator, variable].join(',')}
+				{[period, locator, VARIABLE_MAP[variable]].join(', ')}
 			</div>
 		</div>
 	);
