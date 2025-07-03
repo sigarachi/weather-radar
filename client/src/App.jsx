@@ -226,6 +226,16 @@ const App = () => {
 					<Legend
 						colorRange={colorRanges[selectedVariable]}
 						variable={selectedVariable}
+						period={new Date(selectedPeriod).toLocaleDateString('ru-RU', {
+							year: '2-digit',
+							day: '2-digit',
+							month: '2-digit',
+							minute: 'numeric',
+							hour: 'numeric',
+						})}
+						locator={
+							LOCATOR_MAP.filter((el) => el.code === locator)[0].name ?? ''
+						}
 					/>
 				</div>
 			)}

@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types';
 import { DPmap_CODES } from '../../constants';
 
-const Legend = ({ colorRange, variable }) => {
+const Legend = ({ colorRange, variable, locator, period }) => {
 	if (!colorRange) return null;
 	const { ranges, colors } = colorRange;
 
@@ -71,7 +71,7 @@ const Legend = ({ colorRange, variable }) => {
 			</div>
 
 			<div style={{ textAlign: 'center', fontSize: 14, marginTop: 20 }}>
-				{variable}
+				{[period, locator, variable].join(',')}
 			</div>
 		</div>
 	);
@@ -83,6 +83,8 @@ Legend.propTypes = {
 		colors: PropTypes.arrayOf(PropTypes.string).isRequired,
 	}),
 	variable: PropTypes.string,
+	locator: PropTypes.string,
+	period: PropTypes.string,
 };
 
 export default Legend;
